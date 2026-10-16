@@ -1,0 +1,47 @@
+# --- secrets & external projects (NEVER commit) ---
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+datasets-from-pdf-main*/
+**/datasets-from-pdf*/
+
+# --- corpus / large binaries ---
+pdfs/
+PDFs/
+*.pdf
+
+# --- generated run outputs + local sample data ---
+output/
+output_*/
+sample_run/
+compare_dfp_vs_wrapper/
+vanilla_DFP/
+*.log
+
+# --- virtual environment ---
+.venv/
+venv/
+env/
+
+# --- machine-generated caches ---
+.verify_cache.json
+.meta_cache.json
+*_cache.json
+__pycache__/
+*.pyc
+*.pyo
+
+# --- personal / working data (uncomment to version your ground truth) ---
+manualdatacheck.xlsx
+*.xlsx
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# private archive (shelved LLM experiment + comparison tool, kept out of git)
+_archive/

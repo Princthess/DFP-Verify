@@ -1,0 +1,4 @@
+# DFP-Verify dependencies.
+# Version A (verify-only) needs just requests. Version B also runs DFP, which needs pymupdf.
+requests>=2.28
+pymupdf>=1.19
