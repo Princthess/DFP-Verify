@@ -63,7 +63,7 @@ def detect_from_dfp(rows):
                  "license_hint":       (r.get("license") or "").strip(),
                  "evidence":           (r.get("evidence") or r.get("notes") or "").strip()}
         for fld in ("identifier", "url"):
-            v = (r.get(fld) or "").strip()
+            v = re.sub(r"[‐-―−]", "-", (r.get(fld) or "").strip())   # fancy dashes, as normalize_text
             if not v: continue
             m = DOI_RX.search(v)
             if m:   ident = clean_doi(m.group(0)); kind = "doi"

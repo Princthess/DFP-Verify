@@ -4,11 +4,11 @@ ORCHESTRATOR - detect-union -> verify -> fuse/tier, end to end.
 Edit the CONFIG block for your corpus. Inputs:
   TEXT_DIR    folder of paper .txt files   (drives the regex detector)
   DFP_CSV     the LLM detector's output     (optional; adds LLM candidates)
-Outputs: OUT_DIR/per_paper.csv, per_dataset.csv, merged_output.csv ; DOI/accession checks cached.
+Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; DOI/accession checks cached.
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
-import detect_union, verify, fuse, classify, sections
+import detect_union, verify, fuse, classify, sections, registry_lookup
 
 # ----------------------------------- CONFIG -----------------------------------
 TEXT_DIR   = r"path/to/paper_txt"            # folder of per-paper .txt (the regex detector's input)
@@ -48,11 +48,12 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     # DAS signal comes from DFP's source_section + a DAS-heading locator (sections.py) -- no R, no ODDPub.
 
     # STAGE 1: detect-union per paper (carries each detector's own/reused + open attrs)
-    per_paper, all_cands, header = {}, [], {}
+    per_paper, all_cands, header, heads = {}, [], {}, {}
     for txt in glob.glob(os.path.join(TEXT_DIR, "*.txt")):
         p = stem(txt)
         text = open(txt, encoding="utf-8", errors="ignore").read()
         header[p] = text[:2500]                       # first-page author block (for own/reused)
+        heads[p]  = detect_union.normalize_text(text[:6000])   # first page(s), for the paper-DOI check
         cands = detect_union.union_detect(text=text, dfp_rows=dfp_by.get(p, []))
         # in-text provenance: locate each id against the DAS / reference / supplement landmarks.
         # DAS region is found by the heading locator; DFP's own source_section also counts.
@@ -78,6 +79,27 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print("STAGE 2 verify:")
     verify.verify_candidates(all_cands, cache_path=CACHE)   # mutates candidate dicts in place
 
+    # STAGE 2c: registry links -- datasets DataCite ties to the paper (reverse lookup, cached).
+    # Corroborates ids found in the text, repairs near-miss ids, and adds datasets not in the text.
+    print("STAGE 2c registry links (DataCite, reverse lookup):")
+    reg = registry_lookup.RegistryCache(os.path.join(os.path.dirname(__file__), ".registry_cache.json"))
+    doi_stat, n_linked, n_repaired, n_added = Counter(), 0, 0, 0
+    for p, cands in per_paper.items():
+        pm = paper_meta.setdefault(p, {})
+        doi, st = registry_lookup.check_paper_doi(paper_doi.get(p, ""), heads.get(p, ""), reg)
+        pm["dv_paper_doi"], pm["doi_status"] = doi, st
+        doi_stat[st] += 1
+        if st == "unconfirmed" or not doi:
+            continue
+        added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg))
+        all_cands.extend(added)
+        n_added    += len(added)
+        n_linked   += sum(1 for c in cands if c.get("registry") == "linked")
+        n_repaired += sum(1 for c in cands if c.get("registry", "").startswith("repaired"))
+    reg.save()
+    print(f"  paper DOI: " + " | ".join(f"{k}:{v}" for k, v in doi_stat.most_common()))
+    print(f"  in text + linked: {n_linked} | repaired: {n_repaired} | linked, not in text: {n_added}")
+
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")
     meta = classify.MetaCache(os.path.join(os.path.dirname(__file__), ".meta_cache.json"))
@@ -94,11 +116,18 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                 c["license"]    = rec.get("license") or c.get("license_hint", "")
                 n += 1
     meta.save()
-    print(f"  labelled {n} datasets (confirmed + likely)")
+    # Datasets DataCite ties to the paper that the paper itself doesn't cite are reported, but NOT
+    # counted as the paper sharing data: sharing = the paper tells the reader where its data is.
+    n_reg = 0
+    for cands in per_paper.values():
+        for c in cands:
+            if c.get("registry", "").startswith("not in text") and c.get("status") == "confirmed":
+                c["status"] = "datacite-only"; n_reg += 1
+    print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)")
 
-    # STAGE 3: fuse -> buckets (+ the DFP-superset merged_output.csv)
-    paper_rows, dataset_rows, merged_rows = fuse.fuse(per_paper, paper_meta=paper_meta)
-    fuse.write_outputs(paper_rows, dataset_rows, merged_rows, OUT_DIR)
+    # STAGE 3: fuse -> buckets (summary.csv headline + per_dataset + DFP-superset merged_output.csv)
+    summary_rows, paper_rows, dataset_rows, merged_rows = fuse.fuse(per_paper, paper_meta=paper_meta)
+    fuse.write_outputs(summary_rows, dataset_rows, merged_rows, OUT_DIR)
 
     own_open_papers = [r for r in paper_rows if r["has_own_open"]]
     print(f"\nRESULT ({len(per_paper)} papers):")
@@ -109,10 +138,13 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
           f" | own-unknown: {sum(r['own_unknown'] for r in paper_rows)}")
     print(f"  likely-but-unconfirmed (declared in DAS, no verifiable id): "
           f"{sum(r['likely_unconfirmed'] for r in paper_rows)}")
+    print(f"  DataCite-only (linked to the paper, not cited in it; not counted): "
+          f"{sum(r['datacite_only'] for r in paper_rows)} datasets in "
+          f"{sum(1 for r in paper_rows if r['datacite_only'])} papers")
     n_disagree = sum(1 for r in merged_rows if r["dv_disagreement"])
     print(f"  merged_output.csv: {len(merged_rows)} rows (DFP cols + dv_), "
           f"{n_disagree} with a tool disagreement")
-    print(f"  wrote {OUT_DIR}\\per_paper.csv, per_dataset.csv, merged_output.csv")
+    print(f"  wrote {OUT_DIR}\\summary.csv (headline), per_dataset.csv, merged_output.csv")
 
 if __name__ == "__main__":
     main()

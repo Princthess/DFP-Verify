@@ -25,6 +25,12 @@ Candidates are graded by how much the detectors agree:
    prefixes, accessions, Zenodo / GitHub / OSF / data-repo URLs, split-line repair). Max recall.
 2. **verify** (`verify.py`) — DOI → DataCite type-check, accession → archive API, URL → resolve.
    Deterministic, disk-cached.
+   **registry links** (`registry_lookup.py`) — the reverse direction: which datasets does DataCite
+   tie to *this paper*? The paper DOI is first checked (its record's title must match the first page;
+   else DOIs on the first page, else a Crossref title search). Then DataCite records pointing at it are
+   merged in: an id already in the text is corroborated (`linked`), a declared id that didn't resolve
+   but is a near-miss of a linked DOI is repaired (`repaired`), and the rest are added as
+   `not in text`. Version/concept DOIs of one dataset are collapsed. Disk-cached.
 3. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: DataCite
    creators ∩ paper authors (authoritative) → own-verb in the evidence/DAS sentence → DFP's flag →
    references-location; otherwise `unknown` (never guessed).
@@ -74,9 +80,10 @@ python run_integrated.py      # Version B — run DFP + verify             (VPN 
 (`run_integrated.py` also takes a PDF folder as an argument, overriding `DV_PDF_DIR`.)
 
 **Results** land in `DV_OUT_DIR` (default `output/` for A, `output_integrated/` for B):
-`merged_output.csv` (the headline), `per_paper.csv`, `per_dataset.csv`, and `dfp_output.csv` (vanilla
-DFP). Registry lookups cache to disk, so re-runs only do new work. Version B's most common failure is
-the LLM endpoint being unreachable (VPN off) or a wrong model tag; DFP continues past any PDF that fails.
+`summary.csv` (the headline — one row per paper, plain verdict), `per_dataset.csv` and
+`merged_output.csv` (detail / audit), and `dfp_output.csv` (vanilla DFP). Registry lookups cache to
+disk, so re-runs only do new work. Version B's most common failure is the LLM endpoint being
+unreachable (VPN off) or a wrong model tag; DFP continues past any PDF that fails.
 
 ### Config variables (all live in `.env`; a shell `set DV_...` overrides)
 | variable | required? | what |
@@ -90,16 +97,37 @@ the LLM endpoint being unreachable (VPN off) or a wrong model tag; DFP continues
 
 ## Output
 
-`merged_output.csv` is the headline: **a strict superset of a DFP row** — DFP's 16 columns verbatim
-(`file … vlm`), then DFP-Verify's `dv_` columns. At least one row per paper (a placeholder when empty).
-A blank DFP column = the id came from the regex pass, not DFP's output. `dv_disagreement` names where
-the two tools differ and which signal decided (e.g. `isdata: DFP=dataset, registry=not-data`);
-`dv_provenance_by` records the deciding signal per row.
+**`summary.csv` — the headline.** One row per paper, the *combined* verdict (no DFP-vs-regex
+breadcrumbs — just the answer). Columns: `paper`, `doi`, `data_verdict`, `openness`, `datasets`,
+`linked_via_datacite_not_in_paper`, `reuses_data`, `note`. `doi` is the title-checked paper DOI (the
+`note` says when it was corrected or couldn't be confirmed). `linked_via_datacite_not_in_paper` lists
+datasets that DataCite links to the paper but that the paper doesn't cite. They are reported for
+transparency but **not counted as shared**: sharing means the paper tells the reader where its data
+is. A paper with only such links gets the verdict **`no data in paper; dataset linked via DataCite`**. A dataset id
+that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a DataCite-linked
+DOI does count, with a `note` saying so. `data_verdict` is one of **`shared own data`** (with `openness` = open /
+restricted / unknown / mixed) · **`declared, unverifiable`** (stated in the data-availability statement
+but the id doesn't resolve — a dead dataset DOI is itself a FAIR red flag) · **`reuses data only`** ·
+**`no data in paper; dataset linked via DataCite`** (not counted as shared) · **`no data found`**. `datasets` lists every confirmed dataset tagged by provenance (`own:` / `reused:`),
+plus `declared?:` for declared ids that didn't verify.
 
-**Status tiers:** `confirmed` (registry says dataset/software) · `likely-*` (declared in the DAS but
-unverifiable — a dead dataset DOI is itself a FAIR red flag) · `not-data` (registry says cited article)
-· `noise` (unverified reference). Detect is deliberately noisy — "14 verified of ~450 candidates" is
-the filter working, not failing.
+**`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump).
+
+**`merged_output.csv` — the reconciliation / audit view.** A strict superset of a DFP row: DFP's 16
+columns verbatim (`file … vlm`), then DFP-Verify's `dv_` columns. A blank DFP column = the id came from
+the regex pass, not DFP. `dv_disagreement` names where the two tools differ and which signal decided
+(e.g. `isdata: DFP=dataset, registry=not-data`); `dv_provenance_by` records the deciding signal per row.
+`dv_paper_doi` is the title-checked paper DOI (= summary's `doi`; DFP's own `paper_doi` stays verbatim),
+with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed.
+`dv_registry` shows the DataCite reverse-lookup result per row: `linked` (in the text and linked in
+DataCite) · `repaired (text had …)` · `not in text` (found only via DataCite; status `datacite-only`,
+not counted) · blank (no link).
+Open this when you want to see *why* a verdict came out the way it did.
+
+**Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
+(declared in the DAS but unverifiable) · `not-data` (registry says cited article) · `noise` (unverified
+reference). Detect is deliberately noisy — "14 verified of ~450 candidates" is the filter working, not
+failing.
 
 ## Status & scope
 

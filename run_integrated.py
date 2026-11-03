@@ -18,8 +18,9 @@ Versions, side by side:
   run_integrated.py (B, wrapper)    -- this runs DFP for you, then the identical core.
 
 The ONLY difference is where the DFP CSV comes from. Detect/verify/classify/fuse are shared, so
-both versions produce the same outputs, including merged_output.csv -- a strict superset of a DFP
-row (DFP's columns verbatim + dv_* additions, with dv_disagreement flagging where the tools differ).
+both versions produce the same outputs: summary.csv (the per-paper headline verdict), plus the detail
+files per_dataset.csv and merged_output.csv (a strict superset of a DFP row -- DFP's columns verbatim
++ dv_* additions, with dv_disagreement flagging where the tools differ).
 
 RUN THIS WITH DFP's PYTHON/VENV so DFP (and PyMuPDF) import cleanly. Text for the regex detector
 is extracted from the PDFs with DFP's own extractor -- so a fresh machine needs only the PDFs.

@@ -45,3 +45,6 @@ Thumbs.db
 
 # private archive (shelved LLM experiment + comparison tool, kept out of git)
 _archive/
+
+# local working notes for Claude (candid; not shared)
+CLAUDE.md
