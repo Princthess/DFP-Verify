@@ -19,22 +19,26 @@ verification layer. Two ways to use it:
 DFP's LLM reads the data-availability and references sections; a regex pass covers the rest of the
 full text, and everything is then **verified against registries** — which confirms the real datasets
 and filters the false positives any LLM detector produces (e.g. a cited article read as data).
+DataCite is also asked the reverse question — which datasets point at this paper? — to corroborate
+ids, repair malformed ones, and report linked datasets the paper itself doesn't cite.
 Candidates are graded by how much the detectors agree:
 
 1. **detect** (`detect_union.py`) — DFP's ids ∪ regex (DOIs, Swedish SND / SciLifeLab / DORIS
    prefixes, accessions, Zenodo / GitHub / OSF / data-repo URLs, split-line repair). Max recall.
 2. **verify** (`verify.py`) — DOI → DataCite type-check, accession → archive API, URL → resolve.
    Deterministic, disk-cached.
-   **registry links** (`registry_lookup.py`) — the reverse direction: which datasets does DataCite
+3. **registry links** (`registry_lookup.py`) — the reverse direction: which datasets does DataCite
    tie to *this paper*? The paper DOI is first checked (its record's title must match the first page;
    else DOIs on the first page, else a Crossref title search). Then DataCite records pointing at it are
    merged in: an id already in the text is corroborated (`linked`), a declared id that didn't resolve
-   but is a near-miss of a linked DOI is repaired (`repaired`), and the rest are added as
-   `not in text`. Version/concept DOIs of one dataset are collapsed. Disk-cached.
-3. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: DataCite
+   but is a near-miss of a linked DOI is repaired (`repaired`), and the rest are reported as
+   `not in text` — **not counted as shared** (see Output). Version/concept DOIs of one dataset are
+   collapsed. Disk-cached.
+4. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: DataCite
    creators ∩ paper authors (authoritative) → own-verb in the evidence/DAS sentence → DFP's flag →
    references-location; otherwise `unknown` (never guessed).
-4. **fuse** (`fuse.py`) — roll up to per-paper buckets + the headline `merged_output.csv`.
+5. **fuse** (`fuse.py`) — roll up to per-paper verdicts: the headline `summary.csv` plus the audit
+   files `per_dataset.csv` and `merged_output.csv`.
 
 `sections.py` locates each id (das / body / supplement / references) with a regex heading locator —
 the DAS-membership signal and a cheap provenance nudge.
@@ -98,24 +102,35 @@ unreachable (VPN off) or a wrong model tag; DFP continues past any PDF that fail
 ## Output
 
 **`summary.csv` — the headline.** One row per paper, the *combined* verdict (no DFP-vs-regex
-breadcrumbs — just the answer). Columns: `paper`, `doi`, `data_verdict`, `openness`, `datasets`,
-`linked_via_datacite_not_in_paper`, `reuses_data`, `note`. `doi` is the title-checked paper DOI (the
-`note` says when it was corrected or couldn't be confirmed). `linked_via_datacite_not_in_paper` lists
-datasets that DataCite links to the paper but that the paper doesn't cite. They are reported for
-transparency but **not counted as shared**: sharing means the paper tells the reader where its data
-is. A paper with only such links gets the verdict **`no data in paper; dataset linked via DataCite`**. A dataset id
-that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a DataCite-linked
-DOI does count, with a `note` saying so. `data_verdict` is one of **`shared own data`** (with `openness` = open /
-restricted / unknown / mixed) · **`declared, unverifiable`** (stated in the data-availability statement
-but the id doesn't resolve — a dead dataset DOI is itself a FAIR red flag) · **`reuses data only`** ·
-**`no data in paper; dataset linked via DataCite`** (not counted as shared) · **`no data found`**. `datasets` lists every confirmed dataset tagged by provenance (`own:` / `reused:`),
-plus `declared?:` for declared ids that didn't verify.
+breadcrumbs — just the answer). Columns:
+
+| column | what |
+|---|---|
+| `paper` · `doi` | the file, and its title-checked paper DOI (`note` says if it was corrected or unconfirmed) |
+| `data_verdict` | one of the verdicts below |
+| `openness` | for the authors' own data: open / restricted / unknown / mixed |
+| `datasets` | every confirmed dataset the paper cites, tagged `own:` / `reused:`, plus `declared?:` for declared ids that didn't verify |
+| `linked_via_datacite_not_in_paper` | datasets DataCite links to the paper that the paper does **not** cite — reported, **not counted** |
+| `reuses_data` | yes / no |
+| `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections |
+
+`data_verdict`, in priority order:
+- **`shared own data`** — the paper points to its own data.
+- **`declared, unverifiable`** — stated in the data-availability statement but the id doesn't resolve
+  (a dead dataset DOI is itself a FAIR red flag).
+- **`reuses data only`**
+- **`no data in paper; dataset linked via DataCite`** — the paper cites no data, but DataCite links
+  datasets to it. **Not counted as shared**: sharing means the paper tells the reader where its data is.
+- **`no data found`**
+
+A dataset id that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a
+DataCite-linked DOI **does** count, with a `note` showing the id as written and the registered DOI.
 
 **`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump).
 
 **`merged_output.csv` — the reconciliation / audit view.** A strict superset of a DFP row: DFP's 16
 columns verbatim (`file … vlm`), then DFP-Verify's `dv_` columns. A blank DFP column = the id came from
-the regex pass, not DFP. `dv_disagreement` names where the two tools differ and which signal decided
+the regex pass or DataCite, not DFP (`dv_detected_by` says which). `dv_disagreement` names where the two tools differ and which signal decided
 (e.g. `isdata: DFP=dataset, registry=not-data`); `dv_provenance_by` records the deciding signal per row.
 `dv_paper_doi` is the title-checked paper DOI (= summary's `doi`; DFP's own `paper_doi` stays verbatim),
 with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed.
@@ -125,9 +140,9 @@ not counted) · blank (no link).
 Open this when you want to see *why* a verdict came out the way it did.
 
 **Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
-(declared in the DAS but unverifiable) · `not-data` (registry says cited article) · `noise` (unverified
-reference). Detect is deliberately noisy — "14 verified of ~450 candidates" is the filter working, not
-failing.
+(declared in the DAS but unverifiable) · `datacite-only` (linked to the paper in DataCite, not cited in
+it; not counted) · `not-data` (registry says cited article) · `noise` (unverified reference). Detect is
+deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
 
 ## Status & scope
 
@@ -135,6 +150,9 @@ Early-stage / experimental. Tested end-to-end on a 20-paper corpus (DFP with a 3
 cross-checked against Version A and a small local model).
 Limits: identifier-less data ("on request", bare repo names) can only be *categorised*, not *verified*;
 confirmed-dataset licences are often blank (DataCite's CSL feed omits them); open code is out of scope.
+The DataCite reverse lookup needs the paper's own DOI (reports without one are skipped) and only sees
+links a repository recorded in the dataset's metadata — SND and Chalmers' repository usually do,
+Zenodo/figshare deposits often don't. No link found is not evidence of no data.
 The wrapper changes no DFP code.
 
 ## Credits

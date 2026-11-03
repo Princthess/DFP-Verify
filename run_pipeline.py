@@ -1,10 +1,10 @@
 """
-ORCHESTRATOR - detect-union -> verify -> fuse/tier, end to end.
+ORCHESTRATOR - detect-union -> verify -> registry links (DataCite reverse) -> classify -> fuse, end to end.
 
 Edit the CONFIG block for your corpus. Inputs:
   TEXT_DIR    folder of paper .txt files   (drives the regex detector)
   DFP_CSV     the LLM detector's output     (optional; adds LLM candidates)
-Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; DOI/accession checks cached.
+Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; registry lookups cached.
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
