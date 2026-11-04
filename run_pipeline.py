@@ -48,7 +48,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     # DAS signal comes from DFP's source_section + a DAS-heading locator (sections.py) -- no R, no ODDPub.
 
     # STAGE 1: detect-union per paper (carries each detector's own/reused + open attrs)
-    per_paper, all_cands, header, heads = {}, [], {}, {}
+    per_paper, all_cands, header, heads, texts = {}, [], {}, {}, {}
     for txt in glob.glob(os.path.join(TEXT_DIR, "*.txt")):
         p = stem(txt)
         text = open(txt, encoding="utf-8", errors="ignore").read()
@@ -59,6 +59,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         # DAS region is found by the heading locator; DFP's own source_section also counts.
         ntext = detect_union.normalize_text(text); ntext_lc = ntext.lower()
         bounds = sections.segment(ntext, with_das=True)
+        texts[p] = (ntext_lc, bounds)                 # kept for stage 2c (landing-page matches)
         for c in cands:
             pos = sections.find_positions(ntext_lc, c["identifier"], c.get("kind", ""))
             primary, alllab = sections.locate(pos, bounds, dfp_section=c.get("location", ""))
@@ -83,7 +84,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     # Corroborates ids found in the text, repairs near-miss ids, and adds datasets not in the text.
     print("STAGE 2c registry links (DataCite, reverse lookup):")
     reg = registry_lookup.RegistryCache(os.path.join(os.path.dirname(__file__), ".registry_cache.json"))
-    doi_stat, n_linked, n_repaired, n_added = Counter(), 0, 0, 0
+    doi_stat, reg_stat, orcids = Counter(), Counter(), {}
     for p, cands in per_paper.items():
         pm = paper_meta.setdefault(p, {})
         doi, st = registry_lookup.check_paper_doi(paper_doi.get(p, ""), heads.get(p, ""), reg)
@@ -91,14 +92,22 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         doi_stat[st] += 1
         if st == "unconfirmed" or not doi:
             continue
-        added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg))
+        orcids[p] = reg.paper_orcids(doi)              # paper authors' ORCIDs (own/reused, step 1a)
+        ntext_lc, bounds = texts.get(p, ("", {}))
+        added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg), text_lc=ntext_lc)
+        for c in added:                                # landing-page citations: locate them like any id
+            if c.get("_probe"):
+                primary, alllab = sections.locate(sections.find_positions(ntext_lc, c["_probe"]), bounds)
+                c["found_in"] = primary
+                c["found_in_all"] = ";".join(sorted(alllab, key=lambda x: sections.PRIORITY.get(x, 9)))
+                c["in_das"] = "das" in alllab
         all_cands.extend(added)
-        n_added    += len(added)
-        n_linked   += sum(1 for c in cands if c.get("registry") == "linked")
-        n_repaired += sum(1 for c in cands if c.get("registry", "").startswith("repaired"))
+        for c in cands:
+            r = c.get("registry", "")
+            if r: reg_stat[r.split(" (+")[0].split(" (text had")[0]] += 1
     reg.save()
     print(f"  paper DOI: " + " | ".join(f"{k}:{v}" for k, v in doi_stat.most_common()))
-    print(f"  in text + linked: {n_linked} | repaired: {n_repaired} | linked, not in text: {n_added}")
+    print(f"  DataCite links: " + " | ".join(f"{k}:{v}" for k, v in reg_stat.most_common()))
 
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")
@@ -111,7 +120,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
             if c["status"] == "confirmed" or c["status"].startswith("likely"):
                 rec = meta.record(c["identifier"]) if c["kind"] == "doi" else {}
                 c["provenance"], c["openness"] = classify.classify(
-                    c, rec.get("creators", []), hdr, found_in=c.get("found_in", ""))
+                    c, rec.get("creators", []), hdr, found_in=c.get("found_in", ""),
+                    dataset_orcids=rec.get("orcids", []), paper_orcids=orcids.get(p, []),
+                    access=rec.get("access", ""))
                 c["repository"] = rec.get("publisher") or c.get("repo_hint", "")   # DataCite, else DFP guess
                 c["license"]    = rec.get("license") or c.get("license_hint", "")
                 n += 1

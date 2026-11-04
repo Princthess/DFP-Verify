@@ -3,8 +3,10 @@ CLASSIFY - assign provenance (own/reused) and openness (open/restricted) to each
 VERIFIED dataset.
 
 own vs reused, in priority order:
-  1. creator overlap (deterministic) - dataset's DataCite creators INTERSECT paper's
-     authors (paper authors fetched via the paper's own DOI). Catches LLM mistakes.
+  1a. ORCID overlap - a dataset creator's ORCID is one of the paper authors' ORCIDs -> own.
+      (No overlap proves nothing -- not every author has an ORCID -- so it falls through to 1b.)
+  1b. creator name overlap (deterministic) - dataset's DataCite creator surnames found in the
+      paper's first page. Catches LLM mistakes.
   2. own-verb in the evidence/DAS sentence ("we submitted/deposited ...")
   3. the LLM's created_by_authors judgment (carried from the detect stage)
   4. in-text location (references-only -> reused)
@@ -12,12 +14,14 @@ own vs reused, in priority order:
 
 openness:
   - LLM said is_open == False               -> restricted
+  - DataCite access right says closed / restricted / embargoed -> restricted
   - registry-verified dataset               -> open (controlled-access repos -> restricted)
   - a live github/osf/url deposit           -> open
   - else                                     -> unknown
 """
 import json, os, time, re, requests
 from patterns import OWN_VERBS   # own-provenance verbs ("we submitted/deposited ..."), single source
+from registry_lookup import orcid
 
 UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
 S = requests.Session(); S.headers.update(UA)
@@ -38,23 +42,58 @@ def _csl(doi):
         pass
     return None
 
+def _datacite(doi):
+    """Full DataCite record (rights, ORCIDs) -- None for non-DataCite DOIs (e.g. Crossref)."""
+    try:
+        r = S.get(f"https://api.datacite.org/dois/{doi}", timeout=15)
+        if r.status_code == 200: return r.json()["data"]["attributes"]
+    except Exception:
+        pass
+    return None
+
+def _rights(rights_list):
+    """DataCite rightsList -> (licence, access). access = open / restricted / '' from the
+    info:eu-repo/semantics/*Access vocabulary; licence = the first non-access entry."""
+    lic, access = "", ""
+    for r in rights_list or []:
+        uri = (r.get("rightsUri") or "").lower()
+        m = re.search(r"semantics/(open|closed|restricted|embargoed|metadataonly)access", uri)
+        if m:
+            access = access or ("open" if m.group(1) == "open" else "restricted")
+        elif not lic:
+            lic = r.get("rightsIdentifier") or r.get("rightsUri") or r.get("rights") or ""
+    return lic, access
+
 class MetaCache:
-    """Cached DataCite/Crossref lookups per DOI: creators, publisher (repo), licence."""
+    """Cached registry lookups per DOI: creators (+ORCIDs), publisher (repo), licence, access.
+    DataCite's own API first (it carries rights + ORCIDs); doi.org CSL as the fallback (Crossref)."""
     def __init__(self, path=".meta_cache.json"):
         self.path, self.d = path, {}
         if os.path.exists(path):
             try: self.d = json.load(open(path, encoding="utf-8"))
             except Exception: self.d = {}
     def record(self, doi):
-        empty = {"creators": [], "publisher": "", "license": ""}
+        empty = {"creators": [], "orcids": [], "publisher": "", "license": "", "access": ""}
         if not doi: return empty
-        k = "rec|" + doi.lower()
+        k = "rec2|" + doi.lower()
         if k not in self.d:
-            m = _csl(doi) or {}
-            lic, L = "", m.get("license")
-            if isinstance(L, list) and L:
-                lic = L[0].get("URL", "") if isinstance(L[0], dict) else str(L[0])
-            self.d[k] = {"creators": _surnames(m), "publisher": m.get("publisher", "") or "", "license": lic}
+            a = _datacite(doi)
+            if a:
+                cr = a.get("creators") or []
+                lic, access = _rights(a.get("rightsList"))
+                self.d[k] = {
+                    "creators":  [(c.get("familyName") or c.get("name") or "").split(",")[0].strip().lower().split()[-1]
+                                  for c in cr if (c.get("familyName") or c.get("name") or "").strip()],
+                    "orcids":    sorted({orcid(n.get("nameIdentifier")) for c in cr
+                                         for n in c.get("nameIdentifiers") or [] if orcid(n.get("nameIdentifier"))}),
+                    "publisher": a.get("publisher") or "", "license": lic, "access": access}
+            else:
+                m = _csl(doi) or {}
+                lic, L = "", m.get("license")
+                if isinstance(L, list) and L:
+                    lic = L[0].get("URL", "") if isinstance(L[0], dict) else str(L[0])
+                self.d[k] = {**empty, "creators": _surnames(m), "publisher": m.get("publisher", "") or "",
+                             "license": lic}
             time.sleep(0.05)
         return self.d[k]
     def save(self):
@@ -87,17 +126,23 @@ def _das_says_own(ident, das_text):
     """Offline fallback: is there an own-verb ('submitted/deposited/...') near this id in the DAS?"""
     return bool(OWN_VERBS.search(_das_window(ident, das_text)))
 
-def classify(cand, dataset_creators, paper_header, das_text="", found_in=""):
+def classify(cand, dataset_creators, paper_header, das_text="", found_in="",
+             dataset_orcids=(), paper_orcids=(), access=""):
     """paper_header: the paper's first-page text (author block). das_text: optional DAS text.
-    found_in: coarse in-text location (das/body/supplement/references) -- a weak provenance nudge."""
+    found_in: coarse in-text location (das/body/supplement/references) -- a weak provenance nudge.
+    dataset_orcids / paper_orcids: creator / author ORCIDs (either may be partial or empty).
+    access: DataCite access right ('open' / 'restricted' / '')."""
     hdr = (paper_header or "").lower()
     dc  = [s for s in (dataset_creators or []) if len(s) >= 3]
     ctx = cand.get("evidence") or _das_window(cand.get("identifier", ""), das_text)
+    orcid_hit = bool(set(dataset_orcids or ()) & set(paper_orcids or ()))
     overlap  = ("own" if any(s in hdr for s in dc) else "reused") if (dc and hdr) else None
     flag     = cand.get("created_by_authors")
     flag_sig = "own" if flag is True else ("reused" if flag is False else None)
     # --- provenance: deterministic signals only, in priority order; never a guess.
-    if overlap:                                        # DataCite creators vs the paper's authors ==
+    if orcid_hit:                                      # same person, by ORCID -- strongest signal
+        prov, by = "own", "orcid-overlap"
+    elif overlap:                                      # DataCite creators vs the paper's authors ==
         prov, by = overlap, "creator-overlap"          # authoritative; nothing overrides it.
     else:                                              # no creator metadata (e.g. accessions) -> ladder
         # own-verb on ctx (= DFP's evidence sentence, else the DAS window): "we submitted/deposited".
@@ -110,6 +155,7 @@ def classify(cand, dataset_creators, paper_header, das_text="", found_in=""):
     # --- openness ---
     v = cand.get("verdict", "")
     if cand.get("is_open") is False:               openness = "restricted"
+    elif access == "restricted":                   openness = "restricted"   # DataCite access right
     elif v.startswith("data-verified"):            openness = "restricted" if "EGA" in v else "open"
     elif v.startswith("resolves"):                 openness = "open"
     else:                                          openness = "unknown"

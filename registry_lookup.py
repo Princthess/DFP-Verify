@@ -14,7 +14,11 @@ Per paper it:
        - group already found in the text        -> tagged registry="linked" (+datacite source)
        - a declared id that did NOT resolve and is a near-miss of a linked DOI (OCR/typo/
          line-break artefact)                     -> repaired to the registered DOI
+       - the dataset's landing page is cited instead of its DOI (e.g. an SND catalogue URL)
+                                                  -> NEW candidate, registry="linked (landing page in text)"
        - otherwise                                -> NEW candidate, registry="not in text"
+  No per-repository patterns: what to look for in the text comes from each DataCite record itself
+  (its DOI, its versions, its landing-page URL), so new repositories need no maintenance.
 
 Public API:
   RegistryCache(path)                    -- disk cache (titles + reverse lookups)
@@ -23,6 +27,7 @@ Public API:
   attach(cands, links)                   -> mutates cands in place, returns the new candidates
 """
 import json, os, re, time, requests
+from urllib.parse import urlparse
 from patterns import DOI_RX, clean_doi
 
 UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
@@ -34,6 +39,22 @@ VERDICT      = "data-verified (DataCite link)"
 def _bare(doi):
     """'https://doi.org/10.X/Y' / 'doi:10.X/Y' -> '10.x/y'."""
     return re.sub(r"^(https?://(dx\.)?doi\.org/|doi:)", "", (doi or "").strip(), flags=re.I).lower()
+
+def orcid(s):
+    """'https://orcid.org/0000-0001-2345-678X' -> '0000-0001-2345-678X' ('' if not an ORCID)."""
+    m = re.search(r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]", s or "", re.I)
+    return m.group(0).upper() if m else ""
+
+def landing_tail(url):
+    """The stable, identifier-like end of a landing-page URL: its last two path segments, the last
+    one containing >=3 digits, minus a trailing version ('/1'). The host is ignored on purpose --
+    repositories move domains (snd.gu.se -> researchdata.se) but keep the catalogue id.
+      https://researchdata.se/catalogue/dataset/2023-205/1 -> 'dataset/2023-205'
+    '' when the URL has no such segment (then only the DOI is looked for)."""
+    segs = [s for s in urlparse(url or "").path.lower().split("/") if s]
+    while segs and re.fullmatch(r"v?\d{1,2}", segs[-1]): segs.pop()
+    if len(segs) < 2 or not re.search(r"\d{3}", segs[-1]): return ""
+    return "/".join(segs[-2:])
 
 # ---------------------------------------------------------------- cache
 class RegistryCache:
@@ -77,8 +98,27 @@ class RegistryCache:
             time.sleep(0.1)
         return self.d[k]
 
+    def paper_orcids(self, doi):
+        """ORCIDs of the paper's authors from Crossref (or DataCite for DataCite-registered papers).
+        Often partial -- not every author has / registered one."""
+        k = "orcid|" + doi.lower()
+        if k not in self.d:
+            try:
+                r = S.get(f"https://api.crossref.org/works/{doi}", timeout=30)
+                if r.status_code == 200:
+                    ids = [a.get("ORCID") for a in r.json()["message"].get("author", [])]
+                else:
+                    r = S.get(f"https://api.datacite.org/dois/{doi}", timeout=30)
+                    ids = [n.get("nameIdentifier") for c in (r.json()["data"]["attributes"].get("creators") or [])
+                           for n in c.get("nameIdentifiers") or []] if r.status_code == 200 else []
+            except Exception:
+                return []                                   # network error: don't cache, retry next run
+            self.d[k] = sorted({orcid(i) for i in ids if orcid(i)})
+            time.sleep(0.05)
+        return self.d[k]
+
     def links(self, doi):
-        k = "links|" + doi.lower()
+        k = "links2|" + doi.lower()
         if k not in self.d:
             q = f'relatedIdentifiers.relatedIdentifier:("{doi}" OR "https://doi.org/{doi}")'
             try:
@@ -95,6 +135,7 @@ def _link(rec, paper_doi):
     rels = a.get("relatedIdentifiers") or []
     return {
         "identifier": rec.get("id", "").lower(),
+        "url":        a.get("url") or "",
         "type":       ((a.get("types") or {}).get("resourceTypeGeneral") or "").lower(),
         "publisher":  a.get("publisher") or "",
         "relation":   ",".join(sorted({r.get("relationType", "") for r in rels
@@ -183,9 +224,11 @@ def _blank(ident, link):
             "found_in": "", "found_in_all": "", "in_das": False, "verdict": VERDICT,
             "registry": "not in text", "registry_relation": link["relation"]}
 
-def attach(cands, links):
+def attach(cands, links, text_lc=""):
     """Merge DataCite links into ONE paper's (already verified) candidates. Mutates in place;
-    returns the list of new 'not in text' candidates (also appended to cands)."""
+    returns the list of new candidates (also appended to cands). text_lc: the paper's normalised,
+    lowercased text, searched for each dataset's landing-page tail. A new candidate cited that way
+    carries `_probe` (the matched tail) so the caller can locate it (DAS / body / references)."""
     by_id = {c["identifier"].lower(): c for c in cands if c.get("kind") == "doi"}
     added = []
     for group in _groups(links):
@@ -207,9 +250,14 @@ def attach(cands, links):
             c["identifier"] = l["identifier"]; c["verdict"] = VERDICT
             if "datacite" not in c["source"]: c["source"] += "+datacite"
             continue
-        # not in the text at all -> one new candidate per dataset (prefer the concept DOI)
+        # no DOI in the text -> one new candidate per dataset (prefer the concept DOI). If the paper
+        # cites the dataset's landing page instead, it IS cited (counts); otherwise 'not in text'.
         rep = next((l for l in group if l["is_concept"]), group[0])
         nc = _blank(rep["identifier"], rep); nc["registry_relation"] = rel
+        tails = sorted({t for l in group for t in [landing_tail(l.get("url"))] if t})
+        hit = next((t for t in tails if text_lc and t in text_lc), "")
+        if hit:
+            nc["registry"] = "linked (landing page in text)"; nc["source"] = "datacite+text"; nc["_probe"] = hit
         others = len(ids) - 1
         if others: nc["registry"] += f" (+{others} version{'s' if others > 1 else ''})"
         added.append(nc)

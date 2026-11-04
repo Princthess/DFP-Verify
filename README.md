@@ -31,12 +31,16 @@ Candidates are graded by how much the detectors agree:
    tie to *this paper*? The paper DOI is first checked (its record's title must match the first page;
    else DOIs on the first page, else a Crossref title search). Then DataCite records pointing at it are
    merged in: an id already in the text is corroborated (`linked`), a declared id that didn't resolve
-   but is a near-miss of a linked DOI is repaired (`repaired`), and the rest are reported as
-   `not in text` — **not counted as shared** (see Output). Version/concept DOIs of one dataset are
-   collapsed. Disk-cached.
-4. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: DataCite
-   creators ∩ paper authors (authoritative) → own-verb in the evidence/DAS sentence → DFP's flag →
-   references-location; otherwise `unknown` (never guessed).
+   but is a near-miss of a linked DOI is repaired (`repaired`), a dataset whose landing page is cited
+   instead of its DOI (e.g. an SND catalogue URL) is found by the identifier-like end of that URL
+   (`linked (landing page in text)`), and the rest are reported as `not in text` — **not counted as
+   shared** (see Output). Version/concept DOIs of one dataset are collapsed. Nothing here is
+   repository-specific: what to look for comes from each DataCite record. Disk-cached.
+4. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: ORCID
+   overlap between dataset creators and paper authors → creator surnames on the paper's first page
+   → own-verb in the evidence/DAS sentence → DFP's flag → references-location; otherwise `unknown`
+   (never guessed). Licence and access right (open / restricted) come from the DataCite record;
+   a `restrictedAccess` dataset is `restricted`.
 5. **fuse** (`fuse.py`) — roll up to per-paper verdicts: the headline `summary.csv` plus the audit
    files `per_dataset.csv` and `merged_output.csv`.
 
@@ -135,8 +139,9 @@ the regex pass or DataCite, not DFP (`dv_detected_by` says which). `dv_disagreem
 `dv_paper_doi` is the title-checked paper DOI (= summary's `doi`; DFP's own `paper_doi` stays verbatim),
 with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed.
 `dv_registry` shows the DataCite reverse-lookup result per row: `linked` (in the text and linked in
-DataCite) · `repaired (text had …)` · `not in text` (found only via DataCite; status `datacite-only`,
-not counted) · blank (no link).
+DataCite) · `repaired (text had …)` · `linked (landing page in text)` (cited by its landing-page URL;
+counts) · `not in text` (found only via DataCite; status `datacite-only`, not counted) · blank (no link).
+`dv_provenance_by` = `orcid-overlap` / `creator-overlap` / `own-verb` / `dfp-flag` / `location`.
 Open this when you want to see *why* a verdict came out the way it did.
 
 **Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
@@ -149,7 +154,8 @@ deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, 
 Early-stage / experimental. Tested end-to-end on a 20-paper corpus (DFP with a 31B model,
 cross-checked against Version A and a small local model).
 Limits: identifier-less data ("on request", bare repo names) can only be *categorised*, not *verified*;
-confirmed-dataset licences are often blank (DataCite's CSL feed omits them); open code is out of scope.
+licences/access rights come from DataCite, so they're blank for data registered elsewhere (e.g.
+accessions); ORCID matching only helps where both sides recorded ORCIDs; open code is out of scope.
 The DataCite reverse lookup needs the paper's own DOI (reports without one are skipped) and only sees
 links a repository recorded in the dataset's metadata — SND and Chalmers' repository usually do,
 Zenodo/figshare deposits often don't. No link found is not evidence of no data.
