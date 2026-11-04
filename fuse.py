@@ -109,8 +109,14 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
     if likely and (own or reused): notes.append(f"{len(likely)} declared id(s) did not resolve")
     for c in confirmed:
         if c.get("registry", "").startswith("repaired"):
-            notes.append(f"id in paper did not resolve as written ({c['registry'][len('repaired (text had '):-1]}),"
-                         f" matched to registered {c['identifier']}")
+            written, reg = c["registry"][len("repaired (text had "):-1], c["identifier"]
+            cause = c.get("id_cause", "")
+            if cause == "as-printed":
+                notes.append(f"the paper itself prints a wrong dataset id ({written}); registered DOI is {reg}")
+            elif cause == "pdf-extraction":
+                notes.append(f"dataset id broken by PDF text extraction ({written}); the PDF itself has {reg}")
+            else:
+                notes.append(f"id in paper did not resolve as written ({written}), matched to registered {reg}")
     if reg_only:
         n = len(reg_only)
         notes.append(f"Not counted as shared: DataCite links {n} dataset{'s' if n > 1 else ''} to this paper, "

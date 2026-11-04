@@ -8,7 +8,7 @@ Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; re
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
-import detect_union, verify, fuse, classify, sections, registry_lookup
+import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck
 
 # ----------------------------------- CONFIG -----------------------------------
 TEXT_DIR   = r"path/to/paper_txt"            # folder of per-paper .txt (the regex detector's input)
@@ -85,6 +85,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print("STAGE 2c registry links (DataCite, reverse lookup):")
     reg = registry_lookup.RegistryCache(os.path.join(os.path.dirname(__file__), ".registry_cache.json"))
     doi_stat, reg_stat, orcids = Counter(), Counter(), {}
+    pdfs = selfcheck.pdf_index(os.environ.get("DV_PDF_DIR"))   # optional: only to explain broken ids
     for p, cands in per_paper.items():
         pm = paper_meta.setdefault(p, {})
         doi, st = registry_lookup.check_paper_doi(paper_doi.get(p, ""), heads.get(p, ""), reg)
@@ -105,6 +106,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         for c in cands:
             r = c.get("registry", "")
             if r: reg_stat[r.split(" (+")[0].split(" (text had")[0]] += 1
+            if r.startswith("repaired"):              # why was it broken? look in the PDF itself
+                written = r[len("repaired (text had "):-1]
+                c["id_cause"] = selfcheck.id_cause(pdfs.get(p), written, c["identifier"])
     reg.save()
     print(f"  paper DOI: " + " | ".join(f"{k}:{v}" for k, v in doi_stat.most_common()))
     print(f"  DataCite links: " + " | ".join(f"{k}:{v}" for k, v in reg_stat.most_common()))
@@ -152,6 +156,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print(f"  DataCite-only (linked to the paper, not cited in it; not counted): "
           f"{sum(r['datacite_only'] for r in paper_rows)} datasets in "
           f"{sum(1 for r in paper_rows if r['datacite_only'])} papers")
+    print()
+    for line in selfcheck.run(per_paper, paper_meta, OUT_DIR): print(line)
+    print()
     n_disagree = sum(1 for r in merged_rows if r["dv_disagreement"])
     print(f"  merged_output.csv: {len(merged_rows)} rows (DFP cols + dv_), "
           f"{n_disagree} with a tool disagreement")

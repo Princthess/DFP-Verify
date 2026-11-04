@@ -89,7 +89,8 @@ python run_integrated.py      # Version B — run DFP + verify             (VPN 
 
 **Results** land in `DV_OUT_DIR` (default `output/` for A, `output_integrated/` for B):
 `summary.csv` (the headline — one row per paper, plain verdict), `per_dataset.csv` and
-`merged_output.csv` (detail / audit), and `dfp_output.csv` (vanilla DFP). Registry lookups cache to
+`merged_output.csv` (detail / audit), `selfcheck.csv` (detector self-test), and `dfp_output.csv`
+(vanilla DFP). Registry lookups cache to
 disk, so re-runs only do new work. Version B's most common failure is the LLM endpoint being
 unreachable (VPN off) or a wrong model tag; DFP continues past any PDF that fails.
 
@@ -98,7 +99,7 @@ unreachable (VPN off) or a wrong model tag; DFP continues past any PDF that fail
 |---|---|---|
 | `DV_CONTACT_EMAIL` | recommended | your email, sent politely in registry API requests |
 | `DV_DFP_CSV` / `DV_TEXT_DIR` | **yes (A)** | DFP's output CSV / folder of paper `.txt` |
-| `DV_PDF_DIR` / `DV_DFP_DIR` | **yes (B)** | your PDFs / DFP install (the folder with `main.py`) |
+| `DV_PDF_DIR` / `DV_DFP_DIR` | **yes (B)** | your PDFs / DFP install (the folder with `main.py`). `DV_PDF_DIR` is optional in A: used only to tell *why* a dataset id was broken |
 | DFP's own `.env` (in `DV_DFP_DIR`) | **yes (B, litellm)** | `LITELLM_BASE_URL`, `VLM_MODEL` (+ `LITELLM_API_KEY` if needed) |
 | `DV_BACKEND` | no | `litellm` (default) or `ollama` |
 | `DV_MODEL` · `DV_OUT_DIR` · `DV_NO_REFS` | no | model override · output dir · skip DFP's references pass |
@@ -143,6 +144,15 @@ DataCite) · `repaired (text had …)` · `linked (landing page in text)` (cited
 counts) · `not in text` (found only via DataCite; status `datacite-only`, not counted) · blank (no link).
 `dv_provenance_by` = `orcid-overlap` / `creator-overlap` / `own-verb` / `dfp-flag` / `location`.
 Open this when you want to see *why* a verdict came out the way it did.
+
+**`selfcheck.csv` — how well the text detectors did, measured automatically.** Datasets that DataCite
+links to the paper *and* that the paper cites (DOI, malformed DOI, or landing page) are a small free
+answer key: a detector should have found them. One row per such dataset: `cited_as`, `result` (`found`
+/ `found, id broken` / `not found by text detectors`), `found_by` (DFP / regex), and for broken ids
+`broken_id_cause`: `pdf-extraction` (the PDF itself has the right DOI — link target or text — and the
+`.txt` extraction broke it) or `as-printed` (the published PDF prints a wrong id). The cause check reads
+the PDFs, so set `DV_PDF_DIR` (optional in Version A). A summary also prints after each run. Biased to
+data with DataCite backlinks (SND / Chalmers deposits); "on request" statements are not measured.
 
 **Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
 (declared in the DAS but unverifiable) · `datacite-only` (linked to the paper in DataCite, not cited in
