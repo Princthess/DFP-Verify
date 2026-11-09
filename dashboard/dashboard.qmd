@@ -211,18 +211,37 @@ data_tab(ex[["paper", "areas", "data_verdict", "field", "field_source"]].rename(
 ### Column {.tabset}
 
 ```{python}
-#| title: "Own datasets per publication year, by access"
-# access from the dataset's DataCite rights (open / restricted incl. closed & embargoed); else unknown.
-# Own colours, distinct from the verdict colours above (orange there = DataCite-only).
-ACCESS = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"), ("unknown", "Unknown", "#c3c2b7")]
-oa = OWN.assign(access=OWN.openness.where(OWN.openness.isin(["open", "restricted"]), "unknown"))
-oy = oa[oa.year.fillna("") != ""].groupby(["year", "access"]).size().unstack(fill_value=0)
+#| title: "Papers per publication year, by access to their own data"
+# Paper level, so papers without data stay in the denominator. Access = DataCite rights of the
+# paper's own datasets (summary `openness`): open / restricted (incl. closed, embargoed) / mixed.
+# Colours: access hues are new; orange = DataCite-only and gray = no data, as in the verdict charts.
+ACC = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"),
+       ("mixed", "Mixed (open + restricted)", "#2a78d6"), ("unknown", "Shared, access unknown", "#6250d6"),
+       ("declared", "Declared, not verifiable", "#8d8b84"), ("reuse", "Reuses data only", "#e87ba4"),
+       ("regonly", "DataCite link only (not counted)", "#eb6834"),
+       ("none", "No data found (not shared, or no data)", "#c3c2b7")]
+ACC_LABEL = {k: l for k, l, _ in ACC}
+def access(r):
+    if r.data_verdict == SHARED: return r.openness if r.openness in ("open", "restricted", "mixed") else "unknown"
+    return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly"}.get(r.data_verdict, "none")
+S["access"] = S.apply(access, axis=1)
+
+def access_bars(fig, df, x, row=None, col=None, seen=None):
+    """Stacked access bars of papers per x, in the fixed ACC order and colours. `seen` (a set) lets
+    small multiples show each category once in the legend, whichever panel it first appears in."""
+    t = df.groupby([x, "access"]).size().unstack(fill_value=0)
+    for rank, (k, name, colr) in enumerate(ACC):
+        if k in t and t[k].sum():
+            show = seen is None or k not in seen
+            if seen is not None: seen.add(k)
+            _ = fig.add_bar(x=t.index, y=t[k], name=name, legendgroup=k, showlegend=show, legendrank=rank,
+                            marker=dict(color=colr, line=dict(color=SURF, width=2)),
+                            hovertemplate="%{x}: %{y} paper(s)<extra>" + name + "</extra>", row=row, col=col)
+    return t
+
+ay = S[S.year != ""]
 fig = go.Figure()
-for key, name, col in ACCESS:
-    if key in oy and oy[key].sum():
-        _ = fig.add_bar(x=oy.index, y=oy[key], name=f"{name} ({int(oy[key].sum())})",
-                        marker=dict(color=col, line=dict(color=SURF, width=2)),
-                        hovertemplate="%{x}: %{y} dataset(s)<extra>" + name + "</extra>")
+t_ay = access_bars(fig, ay, "year")
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
                       updatemenus=[dict(type="buttons", direction="right", x=1, xanchor="right", y=1.12, showactive=True,
                                         bgcolor="white", bordercolor=GRID, font=dict(size=12),
@@ -234,8 +253,43 @@ fig
 
 ```{python}
 #| title: "Data"
-data_tab(oa[["paper", "year", "identifier", "access", "repository", "license"]].sort_values(["year", "paper"]),
-         "own_datasets_per_year", counts=oy.reset_index())
+data_tab(ay.assign(access=ay.access.map(ACC_LABEL))[["paper", "year", "access", "data_verdict", "openness", "datasets"]]
+           .sort_values(["year", "paper"]), "papers_per_year_by_access",
+         counts=t_ay.rename(columns=ACC_LABEL).reset_index())
+```
+
+## Row {height=480px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Access by research field and year (papers)"
+from plotly.subplots import make_subplots
+fy = S[S.year != ""].explode("areas")
+area_list = list(fy.groupby("areas").size().sort_values(ascending=False).index)
+years = sorted(fy.year.unique())
+ncol = min(4, len(area_list)); nrow = -(-len(area_list) // ncol)
+fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=area_list, shared_yaxes=True,
+                    horizontal_spacing=0.03, vertical_spacing=0.16)
+seen = set()
+for i, a in enumerate(area_list):
+    _ = access_bars(fig, fy[fy.areas == a], "year", row=i // ncol + 1, col=i % ncol + 1, seen=seen)
+# every panel: all years on the x axis and one common y scale, so panels compare like for like
+_ = fig.update_xaxes(type="category", categoryorder="array", categoryarray=years, range=[-0.5, len(years) - 0.5],
+                     tickfont=dict(size=10))
+_ = fig.update_yaxes(matches="y", rangemode="tozero")
+_ = style(fig).update_layout(barmode="stack", margin=dict(t=28), legend=dict(y=-0.12))
+_ = fig.update_annotations(font=dict(size=12, color=INK2))
+fig
+```
+
+```{python}
+#| title: "Data"
+data_tab(fy.assign(access=fy.access.map(ACC_LABEL))[["areas", "year", "paper", "access", "data_verdict", "field"]]
+           .rename(columns={"areas": "ssif_area"}).sort_values(["ssif_area", "year", "paper"]),
+         "access_by_field_and_year",
+         counts=fy.groupby(["areas", "year", "access"]).size().reset_index(name="papers")
+                  .assign(access=lambda d: d.access.map(ACC_LABEL)).rename(columns={"areas": "ssif_area"}))
 ```
 
 ## Row {height=380px}
@@ -276,6 +330,10 @@ paper, but the paper does not cite the dataset; it is shown but *not counted* as
 areas counts in both, so the field bars can add up to more than {N}. Papers not in Swepub are grouped
 as *No SSIF field*: their OpenAlex topic (in `summary.csv`) uses another classification that does not
 map 1:1 onto SSIF. Colours in the field chart follow the legend of the year chart.
+
+**Access** charts count *papers*, so papers without data stay in the picture. *No data found* can
+mean the data were not shared or that the paper has no data; the tool can't tell the two apart.
+Access comes from the DataCite rights of the paper's own datasets; *mixed* = some open, some restricted.
 
 **Repository**: the repository that registered the DOI in DataCite (e.g. SND, Chalmers DORIS,
 SciLifeLab), not the `publisher` field, which names the responsible institution (hover to see it).

@@ -181,9 +181,10 @@ deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, 
 recomputes nothing and makes no lookups. It has three pages:
 - **Overview**: share of papers sharing their own data, verdicts per publication year (count /
   percent), verdicts per SSIF area (a paper with codes in two areas counts in both; papers not in
-  Swepub are grouped as *No SSIF field*, since OpenAlex topics don't map 1:1 onto SSIF), own
-  datasets per year by access (open / restricted / unknown, count or percent), and where they are
-  deposited.
+  Swepub are grouped as *No SSIF field*, since OpenAlex topics don't map 1:1 onto SSIF), papers
+  per year by access to their own data (open / restricted / mixed, plus DataCite-only and *no data
+  found* so the denominator stays visible; count or percent), the same access split per SSIF area
+  and year (small multiples on one common scale), and where own datasets are deposited.
 - **Tool check**: monitoring the tool itself. Which source found each dataset (DFP and regex, one of
   them, or only DataCite), the self-check score, and a to-do list of what to check by hand: broken
   ids (repaired, dead declared links, data statements without an id), rows where DFP and DFP-Verify
