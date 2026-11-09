@@ -179,7 +179,8 @@ recomputes nothing and makes no lookups. It has two pages:
 - **Overview**: share of papers sharing their own data, verdicts per publication year (count /
   percent), verdicts per SSIF area (a paper with codes in two areas counts in both; papers not in
   Swepub are grouped as *No SSIF field*, since OpenAlex topics don't map 1:1 onto SSIF), own
-  datasets per year, and where they are deposited.
+  datasets per year by access (open / restricted / unknown, count or percent), and where they are
+  deposited.
 - **Papers**: the summary table.
 
 ```

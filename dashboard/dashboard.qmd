@@ -162,11 +162,24 @@ fig
 ```
 
 ```{python}
-#| title: "Own datasets per publication year"
-oy = OWN[OWN.year.fillna("") != ""].groupby("year").size()
-fig = go.Figure(go.Bar(x=oy.index, y=oy.values, marker_color=COLOR[SHARED],
-                       hovertemplate="%{x}: %{y} dataset(s)<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(type="category"), showlegend=False)
+#| title: "Own datasets per publication year, by access"
+# access from the dataset's DataCite rights (open / restricted incl. closed & embargoed); else unknown.
+# Own colours, distinct from the verdict colours above (orange there = DataCite-only).
+ACCESS = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"), ("unknown", "Unknown", "#c3c2b7")]
+oa = OWN.assign(access=OWN.openness.where(OWN.openness.isin(["open", "restricted"]), "unknown"))
+oy = oa[oa.year.fillna("") != ""].groupby(["year", "access"]).size().unstack(fill_value=0)
+fig = go.Figure()
+for key, name, col in ACCESS:
+    if key in oy and oy[key].sum():
+        _ = fig.add_bar(x=oy.index, y=oy[key], name=f"{name} ({int(oy[key].sum())})",
+                        marker=dict(color=col, line=dict(color=SURF, width=2)),
+                        hovertemplate="%{x}: %{y} dataset(s)<extra>" + name + "</extra>")
+_ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
+                      updatemenus=[dict(type="buttons", direction="right", x=1, xanchor="right", y=1.12, showactive=True,
+                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
+                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
+                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = style(fig).update_layout(margin=dict(t=36))
 fig
 ```
 
