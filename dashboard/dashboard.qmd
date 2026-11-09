@@ -75,12 +75,9 @@ def areas(row):
     return ["No SSIF field (not in Swepub)"]
 S["areas"] = S.apply(areas, axis=1)
 
-# ---- dataset level: datasets the papers share as their own (counted), plus DataCite-only ones
+# ---- dataset level: datasets the papers share as their own (counted)
 D["counted"] = (D.status == "confirmed") & (D.provenance == "own")
 OWN = D[D.counted].merge(S[["key", "year"]], left_on="paper", right_on="key", how="left")
-REGO = D[D.status == "datacite-only"]
-DECLARED = D[D.status.str.startswith("likely")]
-REPAIRED = D[D.registry.str.startswith("repaired")]
 ```
 
 # Overview {scrolling="true"}
@@ -198,67 +195,6 @@ as *No SSIF field*: their OpenAlex topic (in `summary.csv`) uses another classif
 map 1:1 onto SSIF. Colours in the field chart follow the legend of the year chart.
 
 Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`.
-""")
-```
-
-# Data & FAIR signals
-
-## Row {height=22%}
-
-```{python}
-#| content: valuebox
-#| title: "DataCite-only datasets (not counted)"
-#| icon: link-45deg
-dict(value=f"{len(REGO)} in {REGO.paper.nunique()} papers", color="warning")
-```
-
-```{python}
-#| content: valuebox
-#| title: "Declared but not verifiable"
-#| icon: question-circle
-dict(value=len(DECLARED), color="light")
-```
-
-```{python}
-#| content: valuebox
-#| title: "Dataset ids repaired"
-#| icon: wrench
-dict(value=len(REPAIRED), color="light")
-```
-
-## Row {height=48%}
-
-```{python}
-#| title: "FAIR-related signals for own datasets cited in the papers (not a FAIR score)"
-lic = OWN.license.str.lower()
-signals = [
-    ("Persistent identifier (DOI or accession)", OWN.kind.isin(["doi", "accession"])),
-    ("Openly accessible", OWN.openness == "open"),
-    ("Licence stated in the metadata", lic != ""),
-    ("Licence is CC0 or CC BY (no NC/ND)", lic.str.contains(r"cc0|cc-by-4|/by/4|cc-by-3|/by/3") & ~lic.str.contains("nc|nd")),
-    ("Dataset metadata links back to the paper", OWN.registry.str.match(r"linked|repaired")),
-]
-sig = pd.DataFrame([(name, int(m.sum())) for name, m in signals], columns=["signal", "n"])[::-1]
-n_own = len(OWN)
-fig = go.Figure(go.Bar(y=sig.signal, x=100 * sig.n / max(n_own, 1), orientation="h", marker_color=COLOR[SHARED],
-                       text=[f"{pct(n, n_own)}  ({n}/{n_own})" for n in sig.n], textposition="outside",
-                       textfont=dict(color=INK2), cliponaxis=False,
-                       hovertemplate="%{y}: %{x:.0f}%<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(range=[0, 125], ticksuffix="%", tickvals=[0, 25, 50, 75, 100]), showlegend=False)
-fig
-```
-
-```{python}
-#| title: "What the signals mean"
-Markdown("""
-These are signals the pipeline already checks, not a FAIR assessment. Article text cannot establish
-FAIRness, and dedicated tools (F-UJI, FAIR-Checker, …) score the dataset record itself.
-
-- **Persistent identifier**: cited by DOI or a registry accession, not a bare URL (*Findable*).
-- **Openly accessible**: DataCite access rights are not restricted, closed or embargoed (*Accessible*).
-- **Licence**: from the dataset's own DataCite metadata (*Reusable*).
-- **Links back to the paper**: the dataset record names the paper, so the link works both ways
-  (traceability).
 """)
 ```
 

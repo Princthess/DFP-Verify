@@ -170,14 +170,11 @@ deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, 
 ### Dashboard (optional)
 
 `dashboard/dashboard.qmd` is a Quarto + Plotly dashboard over `summary.csv` and `per_dataset.csv`. It
-recomputes nothing and makes no lookups. It has three pages:
+recomputes nothing and makes no lookups. It has two pages:
 - **Overview**: share of papers sharing their own data, verdicts per publication year (count /
-  percent), and verdicts per SSIF area (a paper with codes in two areas counts in both).
-- **Data & FAIR signals**: for own datasets cited in the papers, the signals the pipeline already
-  checks: persistent identifier, open access, licence stated, CC0/CC BY licence, and the dataset
-  record linking back to the paper. Also repositories, DataCite-only links, unverifiable
-  declarations and repaired ids. These are *FAIR-related signals, not a FAIR score* (article text
-  can't establish FAIRness; tools such as F-UJI assess the dataset record).
+  percent), verdicts per SSIF area (a paper with codes in two areas counts in both; papers not in
+  Swepub are grouped as *No SSIF field*, since OpenAlex topics don't map 1:1 onto SSIF), own
+  datasets per year, and where they are deposited.
 - **Papers**: the summary table.
 
 ```
