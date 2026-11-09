@@ -83,9 +83,9 @@ class MetaCache:
             except Exception: self.d = {}
     def record(self, doi):
         empty = {"creators": [], "orcids": [], "publisher": "", "repository": "", "license": "", "access": "",
-                 "subjects": []}
+                 "subjects": [], "url": ""}
         if not doi: return empty
-        k = "rec4|" + doi.lower()
+        k = "rec5|" + doi.lower()
         if k not in self.d:
             a = _datacite(doi)
             if a:
@@ -97,7 +97,7 @@ class MetaCache:
                     "orcids":    sorted({orcid(n.get("nameIdentifier")) for c in cr
                                          for n in c.get("nameIdentifiers") or [] if orcid(n.get("nameIdentifier"))}),
                     "publisher": a.get("publisher") or "", "repository": a.get("_repository") or "",
-                    "license": lic, "access": access,
+                    "license": lic, "access": access, "url": a.get("url") or "",   # landing page
                     "subjects":  dataset_subjects(a)}                # SSIF / FOS, for the field cross-check
             else:
                 m = _csl(doi) or {}

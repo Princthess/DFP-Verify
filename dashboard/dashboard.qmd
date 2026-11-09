@@ -259,7 +259,9 @@ for _, r in M[M.dv_disagreement != ""].iterrows():
     for part in r.dv_disagreement.split("; "):
         if part.startswith("detect:"):
             add(G_TOOLS, "Not in DFP output, found by the other sources", r.file, r.identifier,
-                part.split("(found by ")[-1].rstrip(")").replace("llm", "DFP") + " found it")
+                "Found by " + " + ".join({"llm": "DFP", "regex": "pattern search", "datacite": "DataCite",
+                                          "text": "web link in text"}.get(t, t)
+                                         for t in part.split("(found by ")[-1].rstrip(")").split("+")))
         elif part.startswith("isdata:"):
             add(G_TOOLS, "DFP lists it as data, registry says not data", r.file, r.identifier,
                 "Registry type: " + (r.dv_verdict.split("(")[-1].rstrip(")") or "?") + ". Usually a cited article; check if wanted")
@@ -322,12 +324,13 @@ dict(value=int((M.dv_disagreement != "").sum()), color="light")
 #| title: "Who found each dataset (in the text, or only via DataCite)"
 def finder(src):
     s = set(src.split("+"))
-    if "llm" in s and "regex" in s: return "DFP and regex"
+    if "llm" in s and "regex" in s: return "Both text searches (DFP + pattern search)"
     if "llm" in s:                  return "DFP only"
-    if "regex" in s:                return "Regex only"
-    if "text" in s:                 return "Landing page (via DataCite)"
-    return "DataCite only, not in the paper"
-FIND = ["DFP and regex", "DFP only", "Regex only", "Landing page (via DataCite)", "DataCite only, not in the paper"]
+    if "regex" in s:                return "Pattern search only"
+    if "text" in s:                 return "Found via DataCite; paper gives a web link, not the DOI"
+    return "Only in DataCite; paper doesn't mention it (not counted)"
+FIND = ["Both text searches (DFP + pattern search)", "DFP only", "Pattern search only",
+        "Found via DataCite; paper gives a web link, not the DOI", "Only in DataCite; paper doesn't mention it (not counted)"]
 R = D[D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("likely")].copy()
 R["finder"] = R.source.map(finder)
 R["kind2"] = R.status.map(lambda s: "Verified dataset" if s == "confirmed" else
@@ -359,6 +362,20 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue)), legend=dict(y=-0.12))
 fig
+```
+
+## Row {height=150px}
+
+```{python}
+#| title: "How to read this"
+Markdown("""
+Datasets are found in three ways. **DFP** is the AI detector that reads the paper. **Pattern search**
+is DFP-Verify's own rule-based search of the same text, for anything shaped like a DOI or an archive
+accession number (e.g. `PRJEB84056`). **DataCite** works the other way round: a repository's metadata
+says the dataset belongs to the paper. If the paper then turns out to cite it by web link, it counts;
+if the paper doesn't mention it at all, it is listed but not counted. The self-check uses those
+DataCite links as an answer key for the two text searches.
+""")
 ```
 
 ## Row {height=600px}

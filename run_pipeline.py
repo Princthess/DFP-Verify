@@ -144,6 +144,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                 # publisher = the responsible institution. Fallbacks: publisher, then DFP's guess.
                 c["repository"] = rec.get("repository") or rec.get("publisher") or c.get("repo_hint", "")
                 c["publisher"]  = rec.get("publisher", "")
+                c["landing"]    = rec.get("url", "")
                 c["license"]    = rec.get("license") or c.get("license_hint", "")
                 n += 1
     meta.save()
@@ -154,7 +155,19 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         for c in cands:
             if c.get("registry", "").startswith("not in text") and c.get("status") == "confirmed":
                 c["status"] = "datacite-only"; n_reg += 1
-    print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)")
+    # A web link that points to a dataset already confirmed by its DOI in the same paper is the same
+    # dataset written twice, not a second unverifiable one (e.g. zenodo.org/records/N next to 10.5281/zenodo.N).
+    n_dup = 0
+    for cands in per_paper.values():
+        conf = [c for c in cands if c.get("status") == "confirmed" and c.get("kind") == "doi"]
+        for c in cands:
+            if c.get("kind") == "url" and c.get("status", "").startswith("likely"):
+                hit = next((d for d in conf if registry_lookup.same_record(c["identifier"], d["identifier"],
+                                                                           d.get("landing", ""))), None)
+                if hit:
+                    c["status"] = "duplicate"; c["verdict"] = f"same record as {hit['identifier']}"; n_dup += 1
+    print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)"
+          + (f", {n_dup} link(s) merged into a confirmed DOI" if n_dup else ""))
     for cands in per_paper.values():                  # each dataset's own subjects -- cross-check only
         for c in cands:
             if c.get("subjects"): c["subject"] = fields.format_subjects(c["subjects"], fc)

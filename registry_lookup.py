@@ -56,6 +56,16 @@ def landing_tail(url):
     if len(segs) < 2 or not re.search(r"\d{3}", segs[-1]): return ""
     return "/".join(segs[-2:])
 
+def same_record(url, doi, landing=""):
+    """Does this web link point to the same record as this DOI? Compared on the link's id-like last
+    segment: it must end the DOI (zenodo.org/records/8368205 ~ 10.5281/zenodo.8368205) or end the
+    DOI's own landing page from DataCite. No per-repository rules; only used within one paper."""
+    t = landing_tail(url).split("/")[-1]
+    if not t: return False
+    d = (doi or "").lower()
+    if re.search(r"[./_-]" + re.escape(t) + r"$", d): return True
+    return bool(landing) and landing_tail(landing).split("/")[-1] == t
+
 # ---------------------------------------------------------------- cache
 class RegistryCache:
     def __init__(self, path=".registry_cache.json"):

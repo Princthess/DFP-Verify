@@ -169,7 +169,10 @@ data with DataCite backlinks (SND / Chalmers deposits); "on request" statements 
 
 **Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
 (declared in the DAS but unverifiable) · `datacite-only` (linked to the paper in DataCite, not cited in
-it; not counted) · `not-data` (registry says cited article) · `noise` (unverified reference). Detect is
+it; not counted) · `duplicate` (a web link to a dataset the same paper already cites by DOI, e.g.
+`zenodo.org/records/N` next to `10.5281/zenodo.N`; matched on the link's id-like end against the DOI
+and its DataCite landing page, so no per-repository rules) · `not-data` (registry says cited article)
+· `noise` (unverified reference). Detect is
 deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
 
 ### Dashboard (optional)
