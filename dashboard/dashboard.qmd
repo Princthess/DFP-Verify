@@ -121,6 +121,13 @@ dict(value=N, color="light")
 
 ```{python}
 #| content: valuebox
+#| title: "Own datasets cited in the papers"
+#| icon: box-seam
+dict(value=len(OWN), color="light")
+```
+
+```{python}
+#| content: valuebox
 #| title: "Share their own data (open or restricted access)"
 #| icon: database-check
 dict(value=f"{pct(n_shared, N)}  ({n_shared})", color="primary")
@@ -131,20 +138,6 @@ dict(value=f"{pct(n_shared, N)}  ({n_shared})", color="primary")
 #| title: "…openly"
 #| icon: unlock
 dict(value=f"{pct(n_open, N)}  ({n_open})", color="primary")
-```
-
-```{python}
-#| content: valuebox
-#| title: "Own datasets cited in the papers"
-#| icon: box-seam
-dict(value=len(OWN), color="light")
-```
-
-```{python}
-#| content: valuebox
-#| title: "…of those datasets, openly accessible"
-#| icon: folder2-open
-dict(value=pct(int((OWN.openness == "open").sum()), len(OWN)), color="light")
 ```
 
 ## Row {height=440px}
