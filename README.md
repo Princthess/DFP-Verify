@@ -191,7 +191,8 @@ recomputes nothing and makes no lookups. It has three pages:
   per year by access to their own data (open / restricted / mixed, plus DataCite-only and *no data
   found* so the denominator stays visible; count or percent), a heatmap of SSIF area × year whose
   cells show the share of papers sharing their own data (openly, or open + restricted; text "k/n",
-  hover for the full breakdown), and where own datasets are deposited.
+  hover for the full breakdown), where own datasets are deposited, and (if `field_norm.csv` exists)
+  own datasets vs all of DataCite per SSIF area — see *DataCite reference* below.
 - **Tool check**: monitoring the tool itself. Which source found each dataset (DFP and regex, one of
   them, or only DataCite), the self-check score, and a to-do list of what to check by hand: broken
   ids (repaired, dead declared links, data statements without an id), rows where DFP and DFP-Verify
@@ -210,6 +211,21 @@ QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads o
 ```
 The result is a self-contained `dashboard/dashboard.html` (not committed). Run on a whole
 institution's full texts, the year chart shows the trend over time.
+
+### DataCite reference per field (optional)
+
+`python field_norm.py` asks DataCite for counts (no records are downloaded; about 40 requests) and
+writes `output/field_norm.csv`: per SSIF area and publication year, how many DataCite datasets there
+are, how many have restricted access (closed / restricted / embargoed access right) and how many state
+a licence. Datasets get an area from their OECD Fields of Science subjects (SSIF is built on OECD FOS;
+names come from Swepub's SSIF list, with the few OECD wordings that differ in `FOS_NAME`). Every area
+is counted twice: all datasets, and without the area's largest repository.
+
+It is a reference for **dataset openness**, not a field norm for **sharing**: DataCite holds datasets,
+not the papers that shared nothing, so it can't give a share of papers. Other limits: only datasets
+with a FOS subject count (many repositories, e.g. Zenodo, set none), and single registrants dominate
+(figshare 46–92 % of five areas, the specimen registry DiSSCo 68 % of Natural sciences, at
+2026-11-09). The dashboard shows the comparison on the Overview page when the file exists.
 
 ## Status & scope
 

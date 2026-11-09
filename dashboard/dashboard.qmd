@@ -376,7 +376,107 @@ SciLifeLab), not the `publisher` field, which names the responsible institution 
 Accessions (ENA, PRIDE …) show the archive.
 
 **Data tab** on each chart: the rows behind it, with CSV downloads of the counts and of the rows.
-Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`.
+Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`
+(and `field_norm.csv` for the DataCite comparison).
+""")
+```
+
+## Row {height=440px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Own datasets vs all of DataCite, by research field (dataset level)"
+# Reference = field_norm.py's counts over all DataCite datasets with an OECD FOS subject (optional file).
+# Same rules on both sides: restricted = DataCite access right restricted/closed/embargoed; licence
+# stated = a licence in the DataCite rights. Our datasets get the SSIF area of the paper that cites them.
+NORM_PATH = os.path.join(OUT, "field_norm.csv")
+HAVE_NORM = os.path.exists(NORM_PATH)
+if HAVE_NORM:
+    NR = pd.read_csv(NORM_PATH, encoding="utf-8-sig", dtype={"ssif_area": str, "year": str})
+    NR = NR[NR.year == "all"].assign(area=lambda d: d.ssif_area.map(AREAS))
+    own_area = OWN.assign(areas=OWN.paper.map(dict(zip(S.paper, S.areas)))).explode("areas")
+    own_area = own_area[own_area.areas.isin(AREAS.values())]
+    alist = list(AREAS.values())
+    def ours(col_fn):
+        k, n = [], []
+        for a in alist:
+            g = own_area[own_area.areas == a]
+            n.append(len(g)); k.append(int(col_fn(g).sum()))
+        return k, n
+    MEAS = {"Restricted access": (lambda g: g.openness == "restricted", "restricted"),
+            "Licence stated": (lambda g: g.license != "", "licence_stated")}
+    def traces(label):
+        fn, col = MEAS[label]
+        k, n = ours(fn)
+        out = [dict(y=[100 * a / b if b else None for a, b in zip(k, n)],
+                    text=[f"{a}/{b}" if b else "" for a, b in zip(k, n)],
+                    customdata=[f"{a} of {b} own dataset(s)" if b else "no own datasets" for a, b in zip(k, n)])]
+        for variant in ("all", "without largest repository"):
+            r = NR[NR.variant == variant].set_index("area").reindex(alist)
+            out.append(dict(y=list(100 * r[col] / r.datasets),
+                            text=[f"{100 * v / d:.1f}%" for v, d in zip(r[col], r.datasets)],
+                            customdata=[f"{int(v):,} of {int(d):,} datasets" + (f"<br>largest repository: {t} ({s:.0%})"
+                                        if variant == "all" else f"<br>without {t}")
+                                        for v, d, t, s in zip(r[col], r.datasets, r.top_repository, r.top_repository_share)]))
+        return out
+    NAMES = ["Own datasets in these papers", "All DataCite datasets", "DataCite without the largest repository"]
+    COLS3 = [COLOR[SHARED], "#8d8b84", "#c3c2b7"]
+    first = traces("Restricted access")
+    fig = go.Figure([go.Bar(x=alist, y=t["y"], text=t["text"], customdata=t["customdata"], name=nm,
+                            marker_color=c, textposition="outside", textfont=dict(color=INK2, size=11),
+                            cliponaxis=False,
+                            hovertemplate="<b>%{x}</b><br>" + nm + ": %{y:.1f}%<br>%{customdata}<extra></extra>")
+                     for t, nm, c in zip(first, NAMES, COLS3)])
+    btn = lambda label: dict(label=label, method="update",
+                             args=[{"y": [t["y"] for t in traces(label)], "text": [t["text"] for t in traces(label)],
+                                    "customdata": [t["customdata"] for t in traces(label)]},
+                                   {"yaxis.title.text": f"% of datasets: {label.lower()}"}])
+    _ = fig.update_layout(barmode="group", bargap=0.25, bargroupgap=0.08,
+                          updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.02,
+                                            yanchor="bottom", showactive=True, bgcolor="white", bordercolor=GRID,
+                                            font=dict(size=12), buttons=[btn(m) for m in MEAS])])
+    _ = style(fig).update_layout(margin=dict(t=44), yaxis=dict(ticksuffix="%", rangemode="tozero",
+                                                               title=dict(text="% of datasets: restricted access")))
+    display(fig)
+else:
+    display(Markdown("No reference yet. Run `python field_norm.py` (asks DataCite for counts, a minute or two) "
+                     "to write `field_norm.csv`, then render again."))
+```
+
+```{python}
+#| title: "Data"
+if HAVE_NORM:
+    display(data_tab(own_area[["areas", "paper", "identifier", "repository", "openness", "license"]]
+                       .rename(columns={"areas": "ssif_area"}).sort_values(["ssif_area", "paper"]),
+                     "own_vs_datacite",
+                     counts=pd.read_csv(NORM_PATH, encoding="utf-8-sig", dtype=str)))
+else:
+    display(Markdown("No `field_norm.csv` yet."))
+```
+
+### Column
+
+```{python}
+#| title: "About the DataCite comparison"
+Markdown("""
+A **reference, not a field norm for sharing.** It compares the *datasets* these papers cite as their
+own with all datasets in DataCite that carry a subject in the OECD Fields of Science scheme (SSIF is
+built on it, so the six areas match). Same rules on both sides: *restricted access* = DataCite access
+right restricted, closed or embargoed; *licence stated* = a licence in the DataCite rights.
+
+**Read it with care:**
+
+- Only a small part of DataCite has a field subject; many repositories (e.g. Zenodo) set none.
+- One registrant can dominate an area: figshare is 46–92 % of five areas and the specimen
+  registry DiSSCo 68 % of Natural sciences. The lightest bar leaves the largest one out, to show how
+  much it moves the number.
+- It cannot say what share of *papers* share data: DataCite holds datasets, not the papers that
+  shared nothing.
+- A handful of own datasets per area is far too few for a real comparison; the bars show
+  *k/n* so the size is visible.
+
+Refresh with `python field_norm.py` (date in the Data tab, column `fetched`).
 """)
 ```
 
