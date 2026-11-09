@@ -174,11 +174,15 @@ fig
 
 ```{python}
 #| title: "Where own datasets are deposited"
-rp = OWN.repository.replace("", "(unknown)").value_counts().sort_values()
-fig = go.Figure(go.Bar(y=rp.index, x=rp.values, orientation="h", marker_color=COLOR[SHARED],
-                       text=rp.values, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
-                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.max() * 1.2]), showlegend=False)
+# repository = the DataCite client that registered the DOI; publisher (in the hover) = the institution
+rp = (OWN.assign(repository=OWN.repository.replace("", "(unknown)"))
+         .groupby("repository").agg(n=("identifier", "size"),
+                                    pubs=("publisher", lambda s: "<br>".join(sorted({p for p in s if p}))))
+         .sort_values("n"))
+fig = go.Figure(go.Bar(y=rp.index, x=rp.n, orientation="h", marker_color=COLOR[SHARED], customdata=rp.pubs,
+                       text=rp.n, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.n.max() * 1.2]), showlegend=False)
 fig
 ```
 
@@ -193,6 +197,10 @@ paper, but the paper does not cite the dataset; it is shown but *not counted* as
 areas counts in both, so the field bars can add up to more than {N}. Papers not in Swepub are grouped
 as *No SSIF field*: their OpenAlex topic (in `summary.csv`) uses another classification that does not
 map 1:1 onto SSIF. Colours in the field chart follow the legend of the year chart.
+
+**Repository**: the repository that registered the DOI in DataCite (e.g. SND, Chalmers DORIS,
+SciLifeLab), not the `publisher` field, which names the responsible institution (hover to see it).
+Accessions (ENA, PRIDE …) show the archive.
 
 Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`.
 """)

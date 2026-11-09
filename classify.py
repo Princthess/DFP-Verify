@@ -44,10 +44,18 @@ def _csl(doi):
     return None
 
 def _datacite(doi):
-    """Full DataCite record (rights, ORCIDs) -- None for non-DataCite DOIs (e.g. Crossref)."""
+    """Full DataCite record (rights, ORCIDs) + the name of the repository that registered it
+    (the DataCite client, e.g. 'Swedish National Data Service', 'SciLifeLab Data Repository').
+    `publisher` is the responsible institution and often hides the repository, so both are kept.
+    None for non-DataCite DOIs (e.g. Crossref)."""
     try:
-        r = S.get(f"https://api.datacite.org/dois/{doi}", timeout=15)
-        if r.status_code == 200: return r.json()["data"]["attributes"]
+        r = S.get(f"https://api.datacite.org/dois/{doi}", params={"include": "client"}, timeout=15)
+        if r.status_code == 200:
+            j = r.json()
+            a = dict(j["data"]["attributes"])
+            cl = [x for x in j.get("included") or [] if x.get("type") in ("clients", "repositories")]
+            a["_repository"] = (cl[0].get("attributes") or {}).get("name", "") if cl else ""
+            return a
     except Exception:
         pass
     return None
@@ -66,7 +74,7 @@ def _rights(rights_list):
     return lic, access
 
 class MetaCache:
-    """Cached registry lookups per DOI: creators (+ORCIDs), publisher (repo), licence, access.
+    """Cached registry lookups per DOI: creators (+ORCIDs), publisher, repository, licence, access.
     DataCite's own API first (it carries rights + ORCIDs); doi.org CSL as the fallback (Crossref)."""
     def __init__(self, path=".meta_cache.json"):
         self.path, self.d = path, {}
@@ -74,9 +82,10 @@ class MetaCache:
             try: self.d = json.load(open(path, encoding="utf-8"))
             except Exception: self.d = {}
     def record(self, doi):
-        empty = {"creators": [], "orcids": [], "publisher": "", "license": "", "access": "", "subjects": []}
+        empty = {"creators": [], "orcids": [], "publisher": "", "repository": "", "license": "", "access": "",
+                 "subjects": []}
         if not doi: return empty
-        k = "rec3|" + doi.lower()
+        k = "rec4|" + doi.lower()
         if k not in self.d:
             a = _datacite(doi)
             if a:
@@ -87,7 +96,8 @@ class MetaCache:
                                   for c in cr if (c.get("familyName") or c.get("name") or "").strip()],
                     "orcids":    sorted({orcid(n.get("nameIdentifier")) for c in cr
                                          for n in c.get("nameIdentifiers") or [] if orcid(n.get("nameIdentifier"))}),
-                    "publisher": a.get("publisher") or "", "license": lic, "access": access,
+                    "publisher": a.get("publisher") or "", "repository": a.get("_repository") or "",
+                    "license": lic, "access": access,
                     "subjects":  dataset_subjects(a)}                # SSIF / FOS, for the field cross-check
             else:
                 m = _csl(doi) or {}

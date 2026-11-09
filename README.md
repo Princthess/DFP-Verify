@@ -135,7 +135,12 @@ breadcrumbs — just the answer). Columns:
 A dataset id that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a
 DataCite-linked DOI **does** count, with a `note` showing the id as written and the registered DOI.
 
-**`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump). Its
+**`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump).
+`repository` is the repository that registered the DOI (the DataCite client, e.g. *Swedish National
+Data Service*, *Chalmers University of Technology / DORIS repository*, *SciLifeLab Data Repository*,
+*Zenodo*); `publisher` is DataCite's publisher field, the responsible institution (e.g. *Chalmers
+University of Technology* for all three Chalmers cases). The summary's `datasets` cell and
+`dv_repository` use the repository. Its
 `subject` column holds the dataset's own subjects from DataCite (SSIF from SND, FOS from many
 repositories) — a cross-check against the paper's `field`, never the anchor.
 

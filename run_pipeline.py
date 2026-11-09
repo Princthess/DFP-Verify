@@ -140,7 +140,10 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                     dataset_orcids=rec.get("orcids", []), paper_orcids=orcids.get(p, []),
                     access=rec.get("access", ""))
                 c["subjects"]   = rec.get("subjects", [])
-                c["repository"] = rec.get("publisher") or c.get("repo_hint", "")   # DataCite, else DFP guess
+                # repository = the DataCite client that registered the DOI (SND, DORIS, SciLifeLab, Zenodo..);
+                # publisher = the responsible institution. Fallbacks: publisher, then DFP's guess.
+                c["repository"] = rec.get("repository") or rec.get("publisher") or c.get("repo_hint", "")
+                c["publisher"]  = rec.get("publisher", "")
                 c["license"]    = rec.get("license") or c.get("license_hint", "")
                 n += 1
     meta.save()
