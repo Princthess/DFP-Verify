@@ -71,7 +71,8 @@ def areas(row):
     """SSIF area = first digit of each Swepub code. A paper with codes in two areas counts in both."""
     if row.field_source.startswith("swepub"):
         return sorted({AREAS.get(c[0], "Other") for c in re.findall(r"(?:^|; )(\d{1,5})\b", row.field)})
-    return ["Not in Swepub (OpenAlex field only)"] if row.field else ["Field unknown"]
+    # OpenAlex topics (ASJC) don't map 1:1 onto SSIF, so they are not forced into an SSIF area here.
+    return ["No SSIF field (not in Swepub)"]
 S["areas"] = S.apply(areas, axis=1)
 
 # ---- dataset level: datasets the papers share as their own (counted), plus DataCite-only ones
@@ -82,9 +83,9 @@ DECLARED = D[D.status.str.startswith("likely")]
 REPAIRED = D[D.registry.str.startswith("repaired")]
 ```
 
-# Overview
+# Overview {scrolling="true"}
 
-## Row {height=22%}
+## Row {height=160px}
 
 ```{python}
 #| content: valuebox
@@ -114,7 +115,7 @@ dict(value=len(OWN), color="light")
 dict(value=pct(int((OWN.openness == "open").sum()), len(OWN)), color="light")
 ```
 
-## Row {height=48%}
+## Row {height=420px}
 
 ```{python}
 #| title: "Papers per publication year, by data verdict"
@@ -146,7 +147,7 @@ _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, vc.max() * 1.35
 fig
 ```
 
-## Row {height=30%}
+## Row {height=360px}
 
 ```{python}
 #| title: "By research field (SSIF area from Swepub)"
@@ -164,14 +165,37 @@ fig
 ```
 
 ```{python}
+#| title: "Own datasets per publication year"
+oy = OWN[OWN.year.fillna("") != ""].groupby("year").size()
+fig = go.Figure(go.Bar(x=oy.index, y=oy.values, marker_color=COLOR[SHARED],
+                       hovertemplate="%{x}: %{y} dataset(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(type="category"), showlegend=False)
+fig
+```
+
+## Row {height=360px}
+
+```{python}
+#| title: "Where own datasets are deposited"
+rp = OWN.repository.replace("", "(unknown)").value_counts().sort_values()
+fig = go.Figure(go.Bar(y=rp.index, x=rp.values, orientation="h", marker_color=COLOR[SHARED],
+                       text=rp.values, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.max() * 1.2]), showlegend=False)
+fig
+```
+
+```{python}
 #| title: "How to read this"
 Markdown(f"""
 **Shares own data** = the paper itself tells the reader where the authors' own data is, and the
 identifier resolves to a dataset. **DataCite link only** = a repository's metadata points to the
 paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
 
-Field: a paper with Swepub codes in two SSIF areas is counted in both, so the field bars can add up
-to more than {N}. Colours in the field chart follow the legend of the year chart.
+**Field**: the SSIF area is the first digit of the paper's Swepub codes. A paper with codes in two
+areas counts in both, so the field bars can add up to more than {N}. Papers not in Swepub are grouped
+as *No SSIF field*: their OpenAlex topic (in `summary.csv`) uses another classification that does not
+map 1:1 onto SSIF. Colours in the field chart follow the legend of the year chart.
 
 Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`.
 """)
@@ -221,27 +245,6 @@ fig = go.Figure(go.Bar(y=sig.signal, x=100 * sig.n / max(n_own, 1), orientation=
                        textfont=dict(color=INK2), cliponaxis=False,
                        hovertemplate="%{y}: %{x:.0f}%<extra></extra>"))
 _ = style(fig).update_layout(xaxis=dict(range=[0, 125], ticksuffix="%", tickvals=[0, 25, 50, 75, 100]), showlegend=False)
-fig
-```
-
-```{python}
-#| title: "Where own datasets are deposited"
-rp = OWN.repository.replace("", "(unknown)").value_counts().sort_values()
-fig = go.Figure(go.Bar(y=rp.index, x=rp.values, orientation="h", marker_color=COLOR[SHARED],
-                       text=rp.values, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
-                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.max() * 1.2]), showlegend=False)
-fig
-```
-
-## Row {height=30%}
-
-```{python}
-#| title: "Own datasets per publication year"
-oy = OWN[OWN.year.fillna("") != ""].groupby("year").size()
-fig = go.Figure(go.Bar(x=oy.index, y=oy.values, marker_color=COLOR[SHARED],
-                       hovertemplate="%{x}: %{y} dataset(s)<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(type="category"), showlegend=False)
 fig
 ```
 
