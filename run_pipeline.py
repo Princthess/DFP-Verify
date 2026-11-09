@@ -8,7 +8,7 @@ Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; re
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
-import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck
+import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields
 
 # ----------------------------------- CONFIG -----------------------------------
 TEXT_DIR   = r"path/to/paper_txt"            # folder of per-paper .txt (the regex detector's input)
@@ -113,6 +113,17 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print(f"  paper DOI: " + " | ".join(f"{k}:{v}" for k, v in doi_stat.most_common()))
     print(f"  DataCite links: " + " | ".join(f"{k}:{v}" for k, v in reg_stat.most_common()))
 
+    # STAGE 2d: field anchor per paper (Swepub SSIF, else OpenAlex) -- from the checked paper DOI only
+    print("STAGE 2d field (Swepub SSIF, else OpenAlex):")
+    fc = fields.FieldCache(os.path.join(os.path.dirname(__file__), ".field_cache.json"))
+    fstat = Counter()
+    for p in per_paper:
+        pm = paper_meta.setdefault(p, {})
+        ok = pm.get("doi_status") in ("confirmed", "corrected", "found")
+        pm.update(fields.paper_field(pm.get("dv_paper_doi") if ok else "", fc))
+        fstat[pm.get("field_source") or "none"] += 1
+    print("  " + " | ".join(f"{k}:{v}" for k, v in fstat.most_common()))
+
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")
     meta = classify.MetaCache(os.path.join(os.path.dirname(__file__), ".meta_cache.json"))
@@ -127,6 +138,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                     c, rec.get("creators", []), hdr, found_in=c.get("found_in", ""),
                     dataset_orcids=rec.get("orcids", []), paper_orcids=orcids.get(p, []),
                     access=rec.get("access", ""))
+                c["subjects"]   = rec.get("subjects", [])
                 c["repository"] = rec.get("publisher") or c.get("repo_hint", "")   # DataCite, else DFP guess
                 c["license"]    = rec.get("license") or c.get("license_hint", "")
                 n += 1
@@ -139,6 +151,10 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
             if c.get("registry", "").startswith("not in text") and c.get("status") == "confirmed":
                 c["status"] = "datacite-only"; n_reg += 1
     print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)")
+    for p, cands in per_paper.items():                # datasets' own subjects -- cross-check only
+        paper_meta.setdefault(p, {})["dataset_field"] = fields.format_dataset_field(
+            [c.get("subjects") for c in cands if c.get("status") == "confirmed"], fc)
+    fc.save()
 
     # STAGE 3: fuse -> buckets (summary.csv headline + per_dataset + DFP-superset merged_output.csv)
     summary_rows, paper_rows, dataset_rows, merged_rows = fuse.fuse(per_paper, paper_meta=paper_meta)

@@ -35,6 +35,8 @@ __pycache__/
 
 # --- personal / working data (uncomment to version your ground truth) ---
 manualdatacheck.xlsx
+chalmers_roagg.csv
+*roagg*.csv
 *.xlsx
 
 # --- OS / editor noise ---

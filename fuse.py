@@ -134,6 +134,10 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "linked_via_datacite_not_in_paper": "; ".join(f"{c.get('provenance') or '?'}: {c.get('repository') or 'DataCite'}:"
                                    f"{c['identifier']}" for c in reg_only),
         "reuses_data":   "yes" if reused else "no",
+        "field_area":    pm.get("field_area", ""),
+        "field":         pm.get("field", ""),
+        "field_source":  pm.get("field_source", ""),
+        "dataset_field": pm.get("dataset_field", ""),
         "note":          "; ".join(notes),
     }
 
@@ -239,7 +243,8 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
     with open(os.path.join(out_dir, "summary.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "doi", "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
-                                          "reuses_data", "note"])
+                                          "reuses_data", "field_area", "field", "field_source",
+                                          "dataset_field", "note"])
         w.writeheader(); w.writerows(summary_rows)
     with open(os.path.join(out_dir, "per_dataset.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "identifier", "kind", "source", "registry", "found_in",

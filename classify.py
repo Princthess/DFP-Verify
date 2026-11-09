@@ -22,6 +22,7 @@ openness:
 import json, os, time, re, requests
 from patterns import OWN_VERBS   # own-provenance verbs ("we submitted/deposited ..."), single source
 from registry_lookup import orcid
+from fields import dataset_subjects
 
 UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
 S = requests.Session(); S.headers.update(UA)
@@ -73,9 +74,9 @@ class MetaCache:
             try: self.d = json.load(open(path, encoding="utf-8"))
             except Exception: self.d = {}
     def record(self, doi):
-        empty = {"creators": [], "orcids": [], "publisher": "", "license": "", "access": ""}
+        empty = {"creators": [], "orcids": [], "publisher": "", "license": "", "access": "", "subjects": []}
         if not doi: return empty
-        k = "rec2|" + doi.lower()
+        k = "rec3|" + doi.lower()
         if k not in self.d:
             a = _datacite(doi)
             if a:
@@ -86,7 +87,8 @@ class MetaCache:
                                   for c in cr if (c.get("familyName") or c.get("name") or "").strip()],
                     "orcids":    sorted({orcid(n.get("nameIdentifier")) for c in cr
                                          for n in c.get("nameIdentifiers") or [] if orcid(n.get("nameIdentifier"))}),
-                    "publisher": a.get("publisher") or "", "license": lic, "access": access}
+                    "publisher": a.get("publisher") or "", "license": lic, "access": access,
+                    "subjects":  dataset_subjects(a)}                # SSIF / FOS, for the field cross-check
             else:
                 m = _csl(doi) or {}
                 lic, L = "", m.get("license")

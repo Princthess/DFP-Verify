@@ -41,6 +41,8 @@ Candidates are graded by how much the detectors agree:
    → own-verb in the evidence/DAS sentence → DFP's flag → references-location; otherwise `unknown`
    (never guessed). Licence and access right (open / restricted) come from the DataCite record;
    a `restrictedAccess` dataset is `restricted`.
+   **field** (`fields.py`) — anchors each paper to a research field: its SSIF codes in Swepub (found by
+   DOI; names from Swepub's own subject list), else OpenAlex's primary topic. Cached.
 5. **fuse** (`fuse.py`) — roll up to per-paper verdicts: the headline `summary.csv` plus the audit
    files `per_dataset.csv` and `merged_output.csv`.
 
@@ -117,6 +119,8 @@ breadcrumbs — just the answer). Columns:
 | `datasets` | every confirmed dataset the paper cites, tagged `own:` / `reused:`, plus `declared?:` for declared ids that didn't verify |
 | `linked_via_datacite_not_in_paper` | datasets DataCite links to the paper that the paper does **not** cite — reported, **not counted** |
 | `reuses_data` | yes / no |
+| `field_area` · `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`), else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data |
+| `dataset_field` | the cited datasets' own subjects from DataCite (SSIF from SND, FOS from many repositories) — a cross-check, not the anchor |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections |
 
 `data_verdict`, in priority order:
@@ -166,6 +170,9 @@ cross-checked against Version A and a small local model).
 Limits: identifier-less data ("on request", bare repo names) can only be *categorised*, not *verified*;
 licences/access rights come from DataCite, so they're blank for data registered elsewhere (e.g.
 accessions); ORCID matching only helps where both sides recorded ORCIDs; open code is out of scope.
+Fields: a paper often has several SSIF codes (and several universities may classify it differently,
+pooled here) — how to count multi-field papers is left to the analysis. Older records may carry SSIF
+2011 codes. Paper and dataset subjects can disagree; both are shown with their source.
 The DataCite reverse lookup needs the paper's own DOI (reports without one are skipped) and only sees
 links a repository recorded in the dataset's metadata — SND and Chalmers' repository usually do,
 Zenodo/figshare deposits often don't. No link found is not evidence of no data.
