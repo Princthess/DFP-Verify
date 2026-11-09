@@ -50,3 +50,9 @@ _archive/
 
 # local working notes for Claude (candid; not shared)
 CLAUDE.md
+
+# rendered dashboard (rebuild with quarto render dashboard/dashboard.qmd)
+dashboard/dashboard.html
+dashboard/dashboard_files/
+dashboard/.quarto/
+.quarto/

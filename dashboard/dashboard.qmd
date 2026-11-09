@@ -1,0 +1,269 @@
+---
+title: "DFP-Verify · research data in full texts"
+format:
+  dashboard:
+    theme: cosmo
+    nav-buttons: []
+    include-after-body:
+      text: |
+        <script>
+        // Plotly measures text (legends, value labels) while a dashboard card is still hidden and
+        // caches the zero widths per font. Once a chart is visible, a tiny font-name change forces a
+        // fresh measurement -- on load and whenever a dashboard page is shown.
+        function dvRedraw() {
+          document.querySelectorAll('.js-plotly-plot').forEach(function (el) {
+            if (el.clientWidth > 0 && el.offsetParent !== null && !el.dataset.dvDone) {
+              el.dataset.dvDone = '1';
+              Plotly.relayout(el, {'font.family': el._fullLayout.font.family + ', Arial'});
+            }
+          });
+        }
+        window.addEventListener('load', function () { setTimeout(dvRedraw, 200); });
+        document.addEventListener('shown.bs.tab', function () { setTimeout(dvRedraw, 50); });
+        </script>
+execute:
+  echo: false
+  warning: false
+---
+
+```{python}
+#| include: false
+# Reads the pipeline's own outputs -- nothing is recomputed or looked up here.
+# Folder: DV_OUT_DIR (same variable as run_pipeline.py), else ../output.
+import os, re
+import pandas as pd
+import plotly.graph_objects as go
+from IPython.display import Markdown
+
+OUT = os.environ.get("DV_OUT_DIR") or os.path.join("..", "output")
+S = pd.read_csv(os.path.join(OUT, "summary.csv"), encoding="utf-8-sig", dtype=str).fillna("")
+D = pd.read_csv(os.path.join(OUT, "per_dataset.csv"), encoding="utf-8-sig", dtype=str).fillna("")
+
+# ---- verdict categories: fixed order + fixed colours (colour follows the category, never its rank)
+SHARED, REGONLY, REUSE, DECL, NONE = ("shared own data", "no data in paper; dataset linked via DataCite",
+                                      "reuses data only", "declared, unverifiable", "no data found")
+ORDER  = [SHARED, REGONLY, REUSE, DECL, NONE]
+LABEL  = {SHARED: "Shares own data", REGONLY: "DataCite link only (not counted)",
+          REUSE: "Reuses data only", DECL: "Declared, not verifiable", NONE: "No data found"}
+COLOR  = {SHARED: "#2a78d6", REGONLY: "#eb6834", REUSE: "#1baf7a", DECL: "#eda100", NONE: "#c3c2b7"}
+INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
+
+def style(fig, h=None):
+    fig.update_layout(template="plotly_white", font=dict(family="'Source Sans Pro', 'Segoe UI', Arial, sans-serif", size=13, color=INK2),
+                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", barcornerradius=4,
+                      margin=dict(l=8, r=8, t=8, b=8), height=h, hoverlabel=dict(bgcolor="white", font_color=INK),
+                      legend=dict(orientation="h", y=-0.15, x=0, title=None, traceorder="normal"))
+    fig.update_xaxes(gridcolor=GRID, zeroline=False, linecolor=GRID)
+    fig.update_yaxes(gridcolor=GRID, zeroline=False, linecolor=GRID)
+    return fig
+
+def pct(a, b): return f"{100 * a / b:.0f}%" if b else "–"
+
+# ---- paper level
+S["verdict"] = pd.Categorical(S["data_verdict"], ORDER, ordered=True)
+S["key"] = S["paper"].str.replace(r"\.[^.]+$", "", regex=True).str.lower()
+N = len(S)
+n_shared = int((S.data_verdict == SHARED).sum())
+
+AREAS = {"1": "Natural sciences", "2": "Engineering & technology", "3": "Medical & health sciences",
+         "4": "Agricultural & veterinary sciences", "5": "Social sciences", "6": "Humanities & the arts"}
+def areas(row):
+    """SSIF area = first digit of each Swepub code. A paper with codes in two areas counts in both."""
+    if row.field_source.startswith("swepub"):
+        return sorted({AREAS.get(c[0], "Other") for c in re.findall(r"(?:^|; )(\d{1,5})\b", row.field)})
+    return ["Not in Swepub (OpenAlex field only)"] if row.field else ["Field unknown"]
+S["areas"] = S.apply(areas, axis=1)
+
+# ---- dataset level: datasets the papers share as their own (counted), plus DataCite-only ones
+D["counted"] = (D.status == "confirmed") & (D.provenance == "own")
+OWN = D[D.counted].merge(S[["key", "year"]], left_on="paper", right_on="key", how="left")
+REGO = D[D.status == "datacite-only"]
+DECLARED = D[D.status.str.startswith("likely")]
+REPAIRED = D[D.registry.str.startswith("repaired")]
+```
+
+# Overview
+
+## Row {height=22%}
+
+```{python}
+#| content: valuebox
+#| title: "Papers analysed"
+#| icon: file-earmark-text
+dict(value=N, color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Share their own data"
+#| icon: database-check
+dict(value=f"{pct(n_shared, N)}  ({n_shared})", color="primary")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Own datasets cited in the papers"
+#| icon: box-seam
+dict(value=len(OWN), color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "…of which openly accessible"
+#| icon: unlock
+dict(value=pct(int((OWN.openness == "open").sum()), len(OWN)), color="light")
+```
+
+## Row {height=48%}
+
+```{python}
+#| title: "Papers per publication year, by data verdict"
+yr = S[S.year != ""].groupby(["year", "verdict"], observed=False).size().unstack(fill_value=0)
+fig = go.Figure()
+for v in ORDER:
+    if v in yr and yr[v].sum():
+        _ = fig.add_bar(x=yr.index, y=yr[v], name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
+                    hovertemplate="%{x}: %{y} paper(s)<extra>" + LABEL[v] + "</extra>")
+_ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
+                  updatemenus=[dict(type="buttons", direction="right", x=1, xanchor="right", y=1.12, showactive=True,
+                                    bgcolor="white", bordercolor=GRID, font=dict(size=12),
+                                    buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
+                                             dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = style(fig).update_layout(margin=dict(t=36))
+fig
+```
+
+```{python}
+#| title: "Data verdict, all papers"
+vc = S.verdict.value_counts().reindex(ORDER).fillna(0).astype(int)
+vc = vc[vc > 0][::-1]
+fig = go.Figure(go.Bar(y=[LABEL[v] for v in vc.index], x=vc.values, orientation="h",
+                       marker=dict(color=[COLOR[v] for v in vc.index]),
+                       text=[f"{n}  ({pct(n, N)})" for n in vc.values], textposition="outside",
+                       textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="%{y}: %{x} paper(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, vc.max() * 1.35]), showlegend=False)
+fig
+```
+
+## Row {height=30%}
+
+```{python}
+#| title: "By research field (SSIF area from Swepub)"
+ex = S.explode("areas")
+fa = ex.groupby(["areas", "verdict"], observed=False).size().unstack(fill_value=0)
+fa = fa.loc[fa.sum(axis=1).sort_values().index]
+fig = go.Figure()
+for v in ORDER:
+    if v in fa and fa[v].sum():
+        _ = fig.add_bar(y=fa.index, x=fa[v], orientation="h", name=LABEL[v],
+                    marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
+                    hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
+_ = style(fig).update_layout(barmode="stack", showlegend=False)
+fig
+```
+
+```{python}
+#| title: "How to read this"
+Markdown(f"""
+**Shares own data** = the paper itself tells the reader where the authors' own data is, and the
+identifier resolves to a dataset. **DataCite link only** = a repository's metadata points to the
+paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
+
+Field: a paper with Swepub codes in two SSIF areas is counted in both, so the field bars can add up
+to more than {N}. Colours in the field chart follow the legend of the year chart.
+
+Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`.
+""")
+```
+
+# Data & FAIR signals
+
+## Row {height=22%}
+
+```{python}
+#| content: valuebox
+#| title: "DataCite-only datasets (not counted)"
+#| icon: link-45deg
+dict(value=f"{len(REGO)} in {REGO.paper.nunique()} papers", color="warning")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Declared but not verifiable"
+#| icon: question-circle
+dict(value=len(DECLARED), color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Dataset ids repaired"
+#| icon: wrench
+dict(value=len(REPAIRED), color="light")
+```
+
+## Row {height=48%}
+
+```{python}
+#| title: "FAIR-related signals for own datasets cited in the papers (not a FAIR score)"
+lic = OWN.license.str.lower()
+signals = [
+    ("Persistent identifier (DOI or accession)", OWN.kind.isin(["doi", "accession"])),
+    ("Openly accessible", OWN.openness == "open"),
+    ("Licence stated in the metadata", lic != ""),
+    ("Licence is CC0 or CC BY (no NC/ND)", lic.str.contains(r"cc0|cc-by-4|/by/4|cc-by-3|/by/3") & ~lic.str.contains("nc|nd")),
+    ("Dataset metadata links back to the paper", OWN.registry.str.match(r"linked|repaired")),
+]
+sig = pd.DataFrame([(name, int(m.sum())) for name, m in signals], columns=["signal", "n"])[::-1]
+n_own = len(OWN)
+fig = go.Figure(go.Bar(y=sig.signal, x=100 * sig.n / max(n_own, 1), orientation="h", marker_color=COLOR[SHARED],
+                       text=[f"{pct(n, n_own)}  ({n}/{n_own})" for n in sig.n], textposition="outside",
+                       textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="%{y}: %{x:.0f}%<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(range=[0, 125], ticksuffix="%", tickvals=[0, 25, 50, 75, 100]), showlegend=False)
+fig
+```
+
+```{python}
+#| title: "Where own datasets are deposited"
+rp = OWN.repository.replace("", "(unknown)").value_counts().sort_values()
+fig = go.Figure(go.Bar(y=rp.index, x=rp.values, orientation="h", marker_color=COLOR[SHARED],
+                       text=rp.values, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.max() * 1.2]), showlegend=False)
+fig
+```
+
+## Row {height=30%}
+
+```{python}
+#| title: "Own datasets per publication year"
+oy = OWN[OWN.year.fillna("") != ""].groupby("year").size()
+fig = go.Figure(go.Bar(x=oy.index, y=oy.values, marker_color=COLOR[SHARED],
+                       hovertemplate="%{x}: %{y} dataset(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(type="category"), showlegend=False)
+fig
+```
+
+```{python}
+#| title: "What the signals mean"
+Markdown("""
+These are signals the pipeline already checks, not a FAIR assessment. Article text cannot establish
+FAIRness, and dedicated tools (F-UJI, FAIR-Checker, …) score the dataset record itself.
+
+- **Persistent identifier**: cited by DOI or a registry accession, not a bare URL (*Findable*).
+- **Openly accessible**: DataCite access rights are not restricted, closed or embargoed (*Accessible*).
+- **Licence**: from the dataset's own DataCite metadata (*Reusable*).
+- **Links back to the paper**: the dataset record names the paper, so the link works both ways
+  (traceability).
+""")
+```
+
+# Papers
+
+```{python}
+#| title: "All papers (from summary.csv)"
+T = S[["paper", "year", "data_verdict", "openness", "datasets", "linked_via_datacite_not_in_paper", "field", "note"]]
+T = T.rename(columns={"data_verdict": "verdict", "linked_via_datacite_not_in_paper": "DataCite-only"})
+T.sort_values(["year", "paper"], ascending=[False, True]).style.hide(axis="index")
+```

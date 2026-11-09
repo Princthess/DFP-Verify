@@ -93,6 +93,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         doi_stat[st] += 1
         if st == "unconfirmed" or not doi:
             continue
+        pm["year"] = reg.year(doi)                     # publication year (trends over time)
         orcids[p] = reg.paper_orcids(doi)              # paper authors' ORCIDs (own/reused, step 1a)
         ntext_lc, bounds = texts.get(p, ("", {}))
         added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg), text_lc=ntext_lc)

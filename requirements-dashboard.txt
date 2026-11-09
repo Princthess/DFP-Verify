@@ -1,0 +1,5 @@
+# Optional: only for the Quarto dashboard (dashboard/dashboard.qmd). The pipeline itself needs
+# requirements.txt only. Also needs Quarto (https://quarto.org) installed separately.
+plotly>=6
+pandas>=2
+jupyter

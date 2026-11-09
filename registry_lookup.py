@@ -80,6 +80,22 @@ class RegistryCache:
             time.sleep(0.05)
         return self.d[k]
 
+    def year(self, doi):
+        """Publication year from the DOI's own metadata (CSL `issued`; Crossref and DataCite alike)."""
+        k = "year|" + doi.lower()
+        if k not in self.d:
+            try:
+                r = S.get("https://doi.org/" + doi, headers={"Accept": "application/vnd.citationstyles.csl+json"},
+                          timeout=15, allow_redirects=True)
+                if r.status_code != 200: return ""
+                j = r.json()
+                parts = (j.get("issued") or j.get("published-print") or j.get("published-online") or {}).get("date-parts") or [[]]
+                self.d[k] = str(parts[0][0]) if parts and parts[0] and parts[0][0] else ""
+            except Exception:
+                return ""                                   # network error: don't cache
+            time.sleep(0.05)
+        return self.d[k]
+
     def crossref_search(self, head):
         """Top Crossref matches for the first page text -> [(doi, title)]. Only ever used through
         the title check, so a loose search hit can't slip through."""

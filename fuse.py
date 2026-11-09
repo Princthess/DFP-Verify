@@ -25,7 +25,7 @@ DFP_COLS = ["file", "paper_doi", "das_found", "ocr_page_count", "name", "reposit
             "identifier", "url", "license", "created_by_authors", "source_section",
             "notes", "is_open", "is_code", "is_supplementary", "vlm"]
 # what the wrapper adds on top (dv_ = DFP-Verify; obvious at a glance).
-DV_COLS  = ["dv_paper_doi", "dv_paper_doi_check", "dv_field", "dv_field_source", "dv_detected_by", "dv_registry", "dv_found_in", "dv_found_in_all", "dv_in_das", "dv_verdict",
+DV_COLS  = ["dv_paper_doi", "dv_paper_doi_check", "dv_year", "dv_field", "dv_field_source", "dv_detected_by", "dv_registry", "dv_found_in", "dv_found_in_all", "dv_in_das", "dv_verdict",
             "dv_status", "dv_confidence", "dv_is_data", "dv_provenance", "dv_provenance_by",
             "dv_openness", "dv_repository", "dv_license", "dv_disagreement"]
 
@@ -128,6 +128,7 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
     return {
         "paper":         pm.get("file") or paper,
         "doi":           _paper_doi_cols(pm)["dv_paper_doi"],
+        "year":          pm.get("year", ""),
         "data_verdict":  _summary_label(own, likely, reused, reg_only),
         "openness":      _own_openness(own_open, own_restr, unknown),
         "datasets":      _dataset_cell(confirmed, likely),
@@ -157,7 +158,7 @@ def _paper_doi_cols(pm):
     st = pm.get("doi_status", "")
     doi = pm.get("dv_paper_doi") if st in ("confirmed", "corrected", "found") else pm.get("paper_doi")
     return {"dv_paper_doi": doi or "", "dv_paper_doi_check": st,          # paper-level, repeated per row
-            "dv_field": pm.get("field", ""), "dv_field_source": pm.get("field_source", "")}
+            "dv_year": pm.get("year", ""), "dv_field": pm.get("field", ""), "dv_field_source": pm.get("field_source", "")}
 
 def _merged_row(c, paper, paper_meta):
     """One DFP-superset row for a candidate: DFP's columns verbatim (blank if the id is regex-only)
@@ -240,7 +241,7 @@ def fuse(per_paper, paper_meta=None):
 def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "summary.csv"), "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["paper", "doi", "data_verdict", "openness",
+        w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
                                           "reuses_data", "field", "field_source", "note"])
         w.writeheader(); w.writerows(summary_rows)

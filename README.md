@@ -114,6 +114,7 @@ breadcrumbs — just the answer). Columns:
 | column | what |
 |---|---|
 | `paper` · `doi` | the file, and its title-checked paper DOI (`note` says if it was corrected or unconfirmed) |
+| `year` | publication year from the paper DOI's own metadata (blank when the DOI is unconfirmed) |
 | `data_verdict` | one of the verdicts below |
 | `openness` | for the authors' own data: open / restricted / unknown / mixed |
 | `datasets` | every confirmed dataset the paper cites, tagged `own:` / `reused:`, plus `declared?:` for declared ids that didn't verify |
@@ -143,8 +144,9 @@ columns verbatim (`file … vlm`), then DFP-Verify's `dv_` columns. A blank DFP 
 the regex pass or DataCite, not DFP (`dv_detected_by` says which). `dv_disagreement` names where the two tools differ and which signal decided
 (e.g. `isdata: DFP=dataset, registry=not-data`); `dv_provenance_by` records the deciding signal per row.
 `dv_paper_doi` is the title-checked paper DOI (= summary's `doi`; DFP's own `paper_doi` stays verbatim),
-with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed. `dv_field` / `dv_field_source`
-repeat the paper's field on each row (same as summary's `field` / `field_source`).
+with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed. `dv_year`, `dv_field` /
+`dv_field_source` repeat the paper's year and field on each row (same as summary's `year`, `field` /
+`field_source`).
 `dv_registry` shows the DataCite reverse-lookup result per row: `linked` (in the text and linked in
 DataCite) · `repaired (text had …)` · `linked (landing page in text)` (cited by its landing-page URL;
 counts) · `not in text` (found only via DataCite; status `datacite-only`, not counted) · blank (no link).
@@ -164,6 +166,26 @@ data with DataCite backlinks (SND / Chalmers deposits); "on request" statements 
 (declared in the DAS but unverifiable) · `datacite-only` (linked to the paper in DataCite, not cited in
 it; not counted) · `not-data` (registry says cited article) · `noise` (unverified reference). Detect is
 deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
+
+### Dashboard (optional)
+
+`dashboard/dashboard.qmd` is a Quarto + Plotly dashboard over `summary.csv` and `per_dataset.csv`. It
+recomputes nothing and makes no lookups. It has three pages:
+- **Overview**: share of papers sharing their own data, verdicts per publication year (count /
+  percent), and verdicts per SSIF area (a paper with codes in two areas counts in both).
+- **Data & FAIR signals**: for own datasets cited in the papers, the signals the pipeline already
+  checks: persistent identifier, open access, licence stated, CC0/CC BY licence, and the dataset
+  record linking back to the paper. Also repositories, DataCite-only links, unverifiable
+  declarations and repaired ids. These are *FAIR-related signals, not a FAIR score* (article text
+  can't establish FAIRness; tools such as F-UJI assess the dataset record).
+- **Papers**: the summary table.
+
+```
+pip install -r requirements-dashboard.txt          # plotly, pandas, jupyter (+ install Quarto)
+QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads output/, or DV_OUT_DIR
+```
+The result is a self-contained `dashboard/dashboard.html` (not committed). Run on a whole
+institution's full texts, the year chart shows the trend over time.
 
 ## Status & scope
 
