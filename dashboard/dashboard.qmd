@@ -219,6 +219,155 @@ Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `
 """)
 ```
 
+# Tool check {scrolling="true"}
+
+```{python}
+#| include: false
+# Everything the tool itself is unsure about, as one to-do list: (paper, id, issue, what to do).
+# Sources: per_dataset.csv, merged_output.csv (dv_disagreement), selfcheck.csv (answer key).
+M = pd.read_csv(os.path.join(OUT, "merged_output.csv"), encoding="utf-8-sig", dtype=str).fillna("")
+C = pd.read_csv(os.path.join(OUT, "selfcheck.csv"), encoding="utf-8-sig", dtype=str).fillna("")
+NAME = dict(zip(S.key, S.paper))                    # per_dataset's paper key -> file name
+G_ID, G_TOOLS, G_PAPER = "Broken or missing ids", "DFP and DFP-Verify differ", "Paper metadata"
+rows = []
+def add(group, issue, paper, ident, todo): rows.append(dict(group=group, issue=issue, paper=paper, identifier=ident, todo=todo))
+
+cause = dict(zip(C.identifier, C.broken_id_cause))
+for _, r in D[D.registry.str.startswith("repaired")].iterrows():
+    written = r.registry[len("repaired (text had "):-1]
+    cs = cause.get(r.identifier, "")
+    if cs == "as-printed":
+        add(G_ID, "Wrong id printed in the paper", NAME.get(r.paper, r.paper), r.identifier,
+            f"Paper prints {written}. Registered DOI used; worth reporting to authors / publisher")
+    elif cs == "pdf-extraction":
+        add(G_ID, "Id broken by PDF text extraction", NAME.get(r.paper, r.paper), r.identifier,
+            f"Text had {written}; the PDF itself is right. Registered DOI used, nothing to fix in the paper")
+    else:
+        add(G_ID, "Id repaired, cause not checked", NAME.get(r.paper, r.paper), r.identifier,
+            f"Text had {written}. Set DV_PDF_DIR to check the PDF")
+for _, r in D[D.status == "likely-broken-link"].iterrows():
+    add(G_ID, "Declared link does not resolve", NAME.get(r.paper, r.paper), r.identifier,
+        "Check by hand: typo, private/review link, or removed record")
+for _, r in D[D.status == "likely-no-doi"].iterrows():
+    add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
+        "Data statement points to a site, not a record; check by hand")
+for _, r in C[C.result.str.startswith("not found")].iterrows():
+    add(G_TOOLS, "Known dataset not found in the text", r.paper, r.identifier,
+        f"DataCite links it and the paper cites it as {r.cited_as}; neither text detector picked it up")
+
+for _, r in M[M.dv_disagreement != ""].iterrows():
+    for part in r.dv_disagreement.split("; "):
+        if part.startswith("detect:"):
+            add(G_TOOLS, "Not in DFP output, found by the other sources", r.file, r.identifier,
+                part.split("(found by ")[-1].rstrip(")").replace("llm", "DFP") + " found it")
+        elif part.startswith("isdata:"):
+            add(G_TOOLS, "DFP lists it as data, registry says not data", r.file, r.identifier,
+                "Registry type: " + (r.dv_verdict.split("(")[-1].rstrip(")") or "?") + ". Usually a cited article; check if wanted")
+        elif part.startswith("prov:"):
+            add(G_TOOLS, "Own vs reused differs", r.file, r.identifier, part[len("prov: "):])
+        elif part.startswith("open:"):
+            add(G_TOOLS, "Open vs restricted differs", r.file, r.identifier, part[len("open: "):])
+
+pdoi = M.groupby("file").agg(check=("dv_paper_doi_check", "first"), given=("paper_doi", "first"), doi=("dv_paper_doi", "first"))
+for f, r in pdoi.iterrows():
+    if r.check == "corrected":
+        add(G_PAPER, "Paper DOI corrected by title check", f, r.doi, f"Given: {r.given or 'none'}. Check which is right")
+    elif r.check == "found":
+        add(G_PAPER, "Paper DOI found by title check", f, r.doi, "No DOI was given")
+    elif r.check == "unconfirmed":
+        add(G_PAPER, "Paper DOI not confirmed", f, r.given, "No DataCite lookup or field for this paper; check the DOI")
+for p, g in D[D.status == "datacite-only"].groupby("paper"):
+    add(G_PAPER, "DataCite links datasets the paper doesn't cite", NAME.get(p, p), f"{len(g)} dataset(s)",
+        "Not counted. Check the published version, or the dataset's metadata")
+
+Q = pd.DataFrame(rows, columns=["group", "issue", "paper", "identifier", "todo"])
+GCOL = {G_ID: COLOR[SHARED], G_TOOLS: COLOR[REGONLY], G_PAPER: COLOR[REUSE]}
+```
+
+## Row {height=160px}
+
+```{python}
+#| content: valuebox
+#| title: "Papers with something to check"
+#| icon: clipboard-check
+dict(value=f"{Q.paper.nunique()} of {N}", color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Broken ids (repaired · dead · no id)"
+#| icon: wrench
+n_rep = int(D.registry.str.startswith("repaired").sum())
+dict(value=f"{n_rep} · {int((D.status == 'likely-broken-link').sum())} · {int((D.status == 'likely-no-doi').sum())}", color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Self-check: known datasets found in the text"
+#| icon: bullseye
+n_found = int(C.result.str.startswith("found").sum())
+dict(value=f"{n_found} / {len(C)}" if len(C) else "–", color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Rows where DFP and DFP-Verify differ"
+#| icon: arrow-left-right
+dict(value=int((M.dv_disagreement != "").sum()), color="light")
+```
+
+## Row {height=380px}
+
+```{python}
+#| title: "Who found each dataset (in the text, or only via DataCite)"
+def finder(src):
+    s = set(src.split("+"))
+    if "llm" in s and "regex" in s: return "DFP and regex"
+    if "llm" in s:                  return "DFP only"
+    if "regex" in s:                return "Regex only"
+    if "text" in s:                 return "Landing page (via DataCite)"
+    return "DataCite only, not in the paper"
+FIND = ["DFP and regex", "DFP only", "Regex only", "Landing page (via DataCite)", "DataCite only, not in the paper"]
+R = D[D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("likely")].copy()
+R["finder"] = R.source.map(finder)
+R["kind2"] = R.status.map(lambda s: "Verified dataset" if s == "confirmed" else
+                          ("DataCite link only (not counted)" if s == "datacite-only" else "Declared, not verifiable"))
+ft = R.groupby(["finder", "kind2"]).size().unstack(fill_value=0).reindex(FIND[::-1]).fillna(0)
+fig = go.Figure()
+for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not counted)", COLOR[REGONLY]),
+               ("Declared, not verifiable", COLOR[DECL])]:
+    if k in ft and ft[k].sum():
+        _ = fig.add_bar(y=ft.index, x=ft[k], orientation="h", name=f"{k} ({int(ft[k].sum())})",
+                        marker=dict(color=col, line=dict(color=SURF, width=2)),
+                        hovertemplate="%{y}: %{x}<extra>" + k + "</extra>")
+_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.2))
+fig
+```
+
+```{python}
+#| title: "What needs checking"
+qc = Q.groupby(["group", "issue"]).size().reset_index(name="n")
+qc["g"] = qc.group.map({G_ID: 0, G_TOOLS: 1, G_PAPER: 2})
+qc = qc.sort_values(["g", "n"], ascending=[False, True])
+fig = go.Figure()
+for g in [G_ID, G_TOOLS, G_PAPER]:
+    s = qc[qc.group == g]
+    if len(s):
+        _ = fig.add_bar(y=s.issue, x=s.n, orientation="h", name=g, marker_color=GCOL[g],
+                        text=s.n, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
+                        hovertemplate="%{y}: %{x}<extra>" + g + "</extra>")
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
+                             yaxis=dict(categoryorder="array", categoryarray=list(qc.issue)), legend=dict(y=-0.12))
+fig
+```
+
+## Row {height=600px}
+
+```{python}
+#| title: "To check, row by row"
+Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}).style.hide(axis="index")
+```
+
 # Papers
 
 ```{python}
