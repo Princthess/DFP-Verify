@@ -5,8 +5,11 @@ The anchor must exist for EVERY paper (also papers with no data -- they are the 
 comes from the paper, not from its datasets. Sources, in order:
   1. swepub   -- the paper's own SSIF codes in Swepub (set by the Swedish university: author / library;
                  several universities may each have a record -> codes are pooled). Looked up by DOI.
-  2. openalex -- OpenAlex primary topic's field > subfield (automatic, ASJC-based, not SSIF; retrained
-                 over time). Fallback for papers not in Swepub.
+  2. swepub classify -- Swepub's own automatic SSIF classifier (bibliometri.swepub.kb.se/api/v1/classify)
+                 on the paper's title + abstract (abstract from OpenAlex). SSIF, 3-digit level. For papers
+                 not in Swepub (e.g. non-Swedish, or not yet registered).
+  3. openalex -- OpenAlex primary topic's field > subfield (automatic, ASJC-based, not SSIF; retrained
+                 over time). Last resort, when there is no abstract to classify.
 Datasets' own subjects (DataCite `subjects`: SSIF from SND, FOS from many repositories) are reported
 alongside as a cross-check, never as the anchor. SSIF code names come from Swepub's own subject list,
 so there is no table to maintain here.
@@ -24,10 +27,11 @@ S = requests.Session(); S.headers.update(UA)
 XSEARCH  = "http://libris.kb.se/xsearch"
 OAIPMH   = "http://api.libris.kb.se/swepub/oaipmh/"
 SUBJECTS = "https://bibliometri.swepub.kb.se/api/v1/info/research-subjects"
+CLASSIFY = "https://bibliometri.swepub.kb.se/api/v1/classify"
 
 class FieldCache:
     def __init__(self, path=".field_cache.json"):
-        self.path, self.d = path, {}
+        self.path, self.d, self._mem = path, {}, {}
         if os.path.exists(path):
             try: self.d = json.load(open(path, encoding="utf-8"))
             except Exception: self.d = {}
@@ -72,16 +76,48 @@ class FieldCache:
             self.d[k] = sorted(counts, key=lambda c: (-counts[c], c))
         return self.d[k]
 
+    def _openalex_work(self, doi):
+        """OpenAlex work record (fetched once per run; the cached parts are stored separately)."""
+        k = "_oawork|" + doi.lower()
+        if k not in self._mem:
+            try:
+                r = S.get("https://api.openalex.org/works/doi:" + doi, timeout=30)
+                self._mem[k] = r.json() if r.status_code == 200 else {}
+            except Exception:
+                return None                                   # network error: don't remember
+        return self._mem[k]
+
     def openalex(self, doi):
         k = "openalex|" + doi.lower()
         if k not in self.d:
-            try:
-                r = S.get("https://api.openalex.org/works/doi:" + doi, timeout=30)
-                t = r.json().get("primary_topic") if r.status_code == 200 else None
-            except Exception:
-                return {}
+            j = self._openalex_work(doi)
+            if j is None: return {}
+            t = j.get("primary_topic")
             self.d[k] = ({"field": t["field"]["display_name"], "subfield": t["subfield"]["display_name"],
                           "domain": t["domain"]["display_name"]} if t else {})
+        return self.d[k]
+
+    def classify(self, doi):
+        """Automatic SSIF codes (3-digit level) from Swepub's own classifier, given the paper's title and
+        abstract (from OpenAlex). For papers not in Swepub. [] when there is no abstract or no match.
+        Checked on the 16 corpus papers that do have Swepub codes: the top suggestion fell in one of the
+        paper's own SSIF areas every time it suggested anything (14/16; 2 'no match')."""
+        k = "classify|" + doi.lower()
+        if k not in self.d:
+            j = self._openalex_work(doi)
+            if j is None: return []
+            inv = j.get("abstract_inverted_index") or {}
+            abstract = " ".join(w for _, w in sorted((p, w) for w, ps in inv.items() for p in ps))
+            if len(abstract) < 200:                           # too little text to classify on
+                self.d[k] = []; return []
+            try:
+                r = S.post(CLASSIFY, json={"title": j.get("title") or "", "abstract": abstract, "keywords": [],
+                                           "level": 3, "classes": 3}, timeout=60).json()
+            except Exception:
+                return []                                     # network error: don't cache
+            sug = [(s["@id"].rsplit("/", 1)[-1], s.get("_score", 0)) for s in r.get("suggestions") or []]
+            # keep the top suggestion, plus any other reasonably strong one (score >= 0.2)
+            self.d[k] = [c for i, (c, sc) in enumerate(sug) if i == 0 or sc >= 0.2]
         return self.d[k]
 
 def _label(code, names):
@@ -97,6 +133,11 @@ def paper_field(doi, cache):
     if codes:
         names = cache.ssif()
         return {"field": "; ".join(_label(c, names) for c in codes), "field_source": "swepub (SSIF)"}
+    codes = cache.classify(doi)
+    if codes:
+        names = cache.ssif()
+        return {"field": "; ".join(_label(c, names) for c in codes),
+                "field_source": "swepub classify (SSIF, automatic)"}
     oa = cache.openalex(doi)
     if oa:
         return {"field": f"{oa['field']} > {oa['subfield']}", "field_source": "openalex (ASJC, automatic)"}

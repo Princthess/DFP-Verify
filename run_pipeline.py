@@ -114,8 +114,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print(f"  paper DOI: " + " | ".join(f"{k}:{v}" for k, v in doi_stat.most_common()))
     print(f"  DataCite links: " + " | ".join(f"{k}:{v}" for k, v in reg_stat.most_common()))
 
-    # STAGE 2d: field anchor per paper (Swepub SSIF, else OpenAlex) -- from the checked paper DOI only
-    print("STAGE 2d field (Swepub SSIF, else OpenAlex):")
+    # STAGE 2d: field anchor per paper (Swepub SSIF, else Swepub's automatic SSIF classifier on the
+    # abstract, else OpenAlex) -- from the checked paper DOI only
+    print("STAGE 2d field (Swepub SSIF, else automatic SSIF, else OpenAlex):")
     fc = fields.FieldCache(os.path.join(os.path.dirname(__file__), ".field_cache.json"))
     fstat = Counter()
     for p in per_paper:

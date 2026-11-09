@@ -98,8 +98,9 @@ def areas(row):
     """SSIF area = first digit of each Swepub code. A paper with codes in two areas counts in both."""
     if row.field_source.startswith("swepub"):
         return sorted({AREAS.get(c[0], "Other") for c in re.findall(r"(?:^|; )(\d{1,5})\b", row.field)})
+    # 'swepub (SSIF)' and 'swepub classify (SSIF, automatic)' both carry SSIF codes (matched above).
     # OpenAlex topics (ASJC) don't map 1:1 onto SSIF, so they are not forced into an SSIF area here.
-    return ["No SSIF field (not in Swepub)"]
+    return ["No SSIF field"]
 S["areas"] = S.apply(areas, axis=1)
 
 # ---- dataset level: datasets the papers share as their own (counted)
@@ -360,10 +361,11 @@ as possible, as closed as necessary"); data "available on request" without a dep
 **DataCite link only** = a repository's metadata points to the
 paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
 
-**Field**: the SSIF area is the first digit of the paper's Swepub codes. A paper with codes in two
-areas counts in both, so the field bars can add up to more than {N}. Papers not in Swepub are grouped
-as *No SSIF field*: their OpenAlex topic (in `summary.csv`) uses another classification that does not
-map 1:1 onto SSIF. Colours in the field chart follow the legend of the year chart.
+**Field**: the SSIF area is the first digit of the paper's SSIF codes. They come from the paper's
+Swepub record, or, for papers not in Swepub, from Swepub's automatic classifier run on the title and
+abstract (`field_source` = *swepub classify*; on this corpus it agreed with the manual Swepub area
+whenever it made a suggestion). A paper with codes in two areas counts in both, so the field bars can
+add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no abstract). Colours in the field chart follow the legend of the year chart.
 
 **Access** charts count *papers*, so papers without data stay in the picture. *No data found* can
 mean the data were not shared or that the paper has no data; the tool can't tell the two apart.

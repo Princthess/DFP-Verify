@@ -120,7 +120,7 @@ breadcrumbs — just the answer). Columns:
 | `datasets` | every confirmed dataset the paper cites, tagged `own:` / `reused:`, plus `declared?:` for declared ids that didn't verify |
 | `linked_via_datacite_not_in_paper` | datasets DataCite links to the paper that the paper does **not** cite — reported, **not counted** |
 | `reuses_data` | yes / no |
-| `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`), else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data. The SSIF area is the code's first digit |
+| `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`); else SSIF codes from Swepub's own automatic classifier run on the title + abstract from OpenAlex (`swepub classify (SSIF, automatic)`, 3-digit level; on the corpus its top suggestion matched the manual Swepub area every time it suggested one, 14/16); else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data. The SSIF area is the code's first digit |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections |
 
 `data_verdict`, in priority order:
