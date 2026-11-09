@@ -386,7 +386,7 @@ Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `
 ### Column {.tabset}
 
 ```{python}
-#| title: "Own datasets vs their own repositories, by research field (dataset level)"
+#| title: "Restricted access: own datasets vs their own repositories, by research field"
 # From field_norm.py (optional): each own DataCite dataset next to the other datasets in ITS repository,
 # in the SSIF area of the citing paper (or the whole repository when the repository sets no subjects or
 # the area is small). Expected = mean of those references over the datasets. Same rules on both sides.
@@ -399,46 +399,33 @@ if HAVE_NORM:
     FC["area_label"] = FC.ssif_area.map(AREAS).fillna("No SSIF field")
     ALL_OWN = "All own datasets"
     groups = [ALL_OWN] + [a for a in AREAS.values() if a in set(FC.area_label)]
-    MEAS = {"Open access": ("open", "ref_share_open"),
-            "Restricted access": ("restricted", "ref_share_restricted"),
-            "Licence stated": ("licence_stated", "ref_share_licence_stated")}
     def refs_text(g):
         c = g.groupby(["repository", "reference"]).size()
         return "<br>".join(f"{r} ({how}): {n}" for (r, how), n in c.items())
-    def traces(label):
-        own_col, ref_col = MEAS[label]
-        o, e = dict(y=[], text=[], customdata=[]), dict(y=[], text=[], customdata=[])
-        for gname in groups:
-            if gname == ALL_OWN:      # one row per dataset: average its references over its areas
-                g = FC.groupby("identifier").agg(**{own_col: (own_col, "first"), ref_col: (ref_col, "mean"),
-                                                    "repository": ("repository", "first"),
-                                                    "reference": ("reference", "first")}).reset_index()
-            else:
-                g = FC[FC.area_label == gname]
-            k, n = int(g[own_col].sum()), len(g)
-            o["y"].append(100 * k / n); o["text"].append(f"{k}/{n}")
-            o["customdata"].append(f"{k} of {n} own dataset(s)")
-            ev = 100 * g[ref_col].mean()
-            e["y"].append(ev); e["text"].append(f"{ev:.0f}%")
-            e["customdata"].append("references used (datasets):<br>" + refs_text(g))
-        return [o, e]
+    o, e = dict(y=[], text=[], customdata=[]), dict(y=[], text=[], customdata=[])
+    for gname in groups:
+        if gname == ALL_OWN:          # one row per dataset: average its references over its areas
+            g = FC.groupby("identifier").agg(restricted=("restricted", "first"),
+                                             ref_share_restricted=("ref_share_restricted", "mean"),
+                                             repository=("repository", "first"),
+                                             reference=("reference", "first")).reset_index()
+        else:
+            g = FC[FC.area_label == gname]
+        k, n = int(g.restricted.sum()), len(g)
+        o["y"].append(100 * k / n); o["text"].append(f"{k}/{n}")
+        o["customdata"].append(f"{k} of {n} own dataset(s)")
+        ev = 100 * g.ref_share_restricted.mean()
+        e["y"].append(ev); e["text"].append(f"{ev:.0f}%")
+        e["customdata"].append("references used (datasets):<br>" + refs_text(g))
     NAMES = ["Own datasets in these papers", "Expected from their repositories"]
-    first = traces("Open access")
     fig = go.Figure([go.Bar(x=groups, y=t["y"], text=t["text"], customdata=t["customdata"], name=nm,
                             marker_color=c, textposition="outside", textfont=dict(color=INK2, size=11),
                             cliponaxis=False,
                             hovertemplate="<b>%{x}</b><br>" + nm + ": %{y:.0f}%<br>%{customdata}<extra></extra>")
-                     for t, nm, c in zip(first, NAMES, [COLOR[SHARED], "#8d8b84"])])
-    btn = lambda label: dict(label=label, method="update",
-                             args=[{"y": [t["y"] for t in traces(label)], "text": [t["text"] for t in traces(label)],
-                                    "customdata": [t["customdata"] for t in traces(label)]},
-                                   {"yaxis.title.text": f"% of datasets: {label.lower()}"}])
-    _ = fig.update_layout(barmode="group", bargap=0.3, bargroupgap=0.08,
-                          updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.02,
-                                            yanchor="bottom", showactive=True, bgcolor="white", bordercolor=GRID,
-                                            font=dict(size=12), buttons=[btn(m) for m in MEAS])])
-    _ = style(fig).update_layout(margin=dict(t=44), yaxis=dict(ticksuffix="%", range=[0, 115],
-                                                               title=dict(text="% of datasets: open access")))
+                     for t, nm, c in zip([o, e], NAMES, [COLOR[SHARED], "#8d8b84"])])
+    _ = fig.update_layout(barmode="group", bargap=0.3, bargroupgap=0.08)
+    _ = style(fig).update_layout(yaxis=dict(ticksuffix="%", range=[0, 100],
+                                            title=dict(text="% of datasets with restricted access")))
     display(fig)
 else:
     display(Markdown("No reference yet. Run `python field_norm.py` after the pipeline (asks DataCite, a "
@@ -465,15 +452,9 @@ that area, the whole repository is the reference (hover to see which). *Expected
 those references, so the grey bar is what these repositories usually look like for this mix of
 datasets.
 
-Same rules on both sides, from DataCite's rights. **Access** and **licence** are separate fields:
-- *Open access* = the access right says open, explicitly.
-- *Restricted access* = restricted, closed or embargoed.
-- The rest state no access right (SciLifeLab, for instance, never does), so open + restricted can be
-  less than 100 %.
-- *Licence stated* = a licence is given, whatever the access (SND has many open datasets without a
-  licence, and some restricted ones with one).
-
-Versions of one dataset count once.
+Same rule on both sides, as in the rest of the dashboard: a deposited dataset has **restricted
+access** when its DataCite access right says restricted, closed or embargoed; otherwise it is
+**open** (the rest of each bar up to 100 %). Versions of one dataset count once.
 
 **Why not all of DataCite?** Only a few repositories put field subjects on datasets (figshare, the
 specimen registry DiSSCo), so an all-of-DataCite figure mostly describes them. Within one repository,
