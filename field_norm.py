@@ -14,8 +14,11 @@ repository, in the area of the paper that cites it:
   2. else the whole repository (e.g. Zenodo, which sets no subjects).
 
 What is compared (dataset level, same rules on both sides, from DataCite's own rights):
+  open            -- access right info:eu-repo/semantics/openAccess, stated explicitly
   restricted      -- access right info:eu-repo/semantics/{restricted,closed,embargoed,metadataonly}Access
-  licence_stated  -- a licence in the rights (as classify._rights reads it)
+  licence_stated  -- a licence in the rights (as classify._rights reads it). Separate from access: SND
+                     has many open datasets without a licence, SciLifeLab licences but states no access.
+  The rest have no access right stated (access_not_stated) -- not counted as open.
 Versions and duplicate DOIs count once (DOIs marked IsVersionOf / IsIdenticalTo another are skipped),
 as the pipeline collapses versions. Accessions (ENA, PRIDE ...) are not in DataCite -> not compared.
 
@@ -42,6 +45,7 @@ SKIP_REL = {"IsVersionOf", "IsIdenticalTo"}
 ONE_PER_DATASET = "NOT relatedIdentifiers.relationType:(IsVersionOf OR IsIdenticalTo)"
 RESTRICTED = ("rightsList.rightsUri:(*restrictedAccess OR *closedAccess OR *embargoedAccess "
               "OR *metadataonlyAccess)")
+OPEN = "rightsList.rightsUri:*openAccess"
 LICENCE = "(rightsList.rightsIdentifier:* OR rightsList.rightsUri:(*creativecommons* OR *opendatacommons*))"
 
 def _get(path, **params):
@@ -77,7 +81,7 @@ def is_version(attrs):
 
 def counts_by_paging(client, fos_map):
     """{area or 'all': [datasets, restricted, licence]}, reading every dataset record of the repository."""
-    c = {"all": [0, 0, 0]}
+    c = {"all": [0, 0, 0, 0]}
     url, params = API + "/dois", {"client-id": client, "resource-type-id": "dataset", "page[size]": 1000,
                                   "page[cursor]": 1, "fields[dois]": "subjects,rightsList,relatedIdentifiers"}
     while url:
@@ -86,10 +90,10 @@ def counts_by_paging(client, fos_map):
             a = d["attributes"]
             if is_version(a): continue
             lic, acc = _rights(a.get("rightsList"))
-            v = (1, int(acc == "restricted"), int(bool(lic)))
+            v = (1, int(acc == "restricted"), int(bool(lic)), int(acc == "open"))
             for k in ["all"] + sorted(record_areas(a, fos_map)):
-                row = c.setdefault(k, [0, 0, 0])
-                for i in range(3): row[i] += v[i]
+                row = c.setdefault(k, [0, 0, 0, 0])
+                for i in range(4): row[i] += v[i]
         url, params = j.get("links", {}).get("next"), None
     return c
 
@@ -99,13 +103,14 @@ def counts_by_query(client, ssif):
     def n(q):
         return _get("/dois", **{"client-id": client, "resource-type-id": "dataset", "query": q,
                                 "page[size]": 0})["meta"]["total"]
-    c = {"all": [n(ONE_PER_DATASET), n(f"{ONE_PER_DATASET} AND {RESTRICTED}"), n(f"{ONE_PER_DATASET} AND {LICENCE}")]}
+    c = {"all": [n(ONE_PER_DATASET), n(f"{ONE_PER_DATASET} AND {RESTRICTED}"), n(f"{ONE_PER_DATASET} AND {LICENCE}"),
+                 n(f"{ONE_PER_DATASET} AND {OPEN}")]}
     for a in "123456":
         labels = [FOS_NAME.get(a, ssif[a])] + [FOS_NAME.get(k, v) for k, v in ssif.items() if len(k) == 3 and k[0] == a]
         q = "subjects.subject:(" + " OR ".join(f'"FOS: {l}"' for l in labels) + f") AND {ONE_PER_DATASET}"
         total = n(q)
         if total:
-            c[a] = [total, n(f"({q}) AND {RESTRICTED}"), n(f"({q}) AND {LICENCE}")]
+            c[a] = [total, n(f"({q}) AND {RESTRICTED}"), n(f"({q}) AND {LICENCE}"), n(f"({q}) AND {OPEN}")]
     return c
 
 def paper_areas(field, source):
@@ -137,7 +142,7 @@ def main():
         lic, acc = _rights(a.get("rightsList"))
         clients[cid] = cname
         mine.append({**r, "client": cid, "client_name": cname, "dc_restricted": int(acc == "restricted"),
-                     "dc_licence": int(bool(lic)), "note": ""})
+                     "dc_licence": int(bool(lic)), "dc_open": int(acc == "open"), "note": ""})
 
     ref = {}
     for cid, cname in clients.items():
@@ -145,16 +150,18 @@ def main():
         how = "records" if total <= PAGE_LIMIT else "search"
         ref[cid] = counts_by_paging(cid, fos_map) if how == "records" else counts_by_query(cid, ssif)
         a = ref[cid]["all"]
-        print(f"  {cname}: {a[0]:,} datasets ({how}), {a[1]/max(a[0],1):.1%} restricted, "
+        print(f"  {cname}: {a[0]:,} datasets ({how}), {a[3]/max(a[0],1):.1%} open, {a[1]/max(a[0],1):.1%} restricted, "
               f"{a[2]/max(a[0],1):.1%} licence; areas with >= {MIN_AREA}: "
               + (", ".join(k for k, v in ref[cid].items() if k != "all" and v[0] >= MIN_AREA) or "none"))
 
     rows = []
     for cid, c in ref.items():
-        for k, (n, res, lic) in sorted(c.items()):
+        for k, (n, res, lic, opn) in sorted(c.items()):
             rows.append({"client_id": cid, "repository": clients[cid], "ssif_area": k,
                          "area": "whole repository" if k == "all" else ssif.get(k, k),
-                         "datasets": n, "restricted": res, "licence_stated": lic,
+                         "datasets": n, "open": opn, "restricted": res, "access_not_stated": n - opn - res,
+                         "licence_stated": lic,
+                         "share_open": round(opn / n, 4) if n else "",
                          "share_restricted": round(res / n, 4) if n else "",
                          "share_licence_stated": round(lic / n, 4) if n else "",
                          "fetched": today})
@@ -169,15 +176,17 @@ def main():
             base = {"paper": m["paper"], "identifier": m["identifier"], "repository": m.get("client_name", m["repository"]),
                     "ssif_area": a, "area": ssif.get(a, "no SSIF field")}
             if not m["client"]:
-                drows.append({**base, "restricted": "", "licence_stated": "", "reference": "", "ref_datasets": "",
-                              "ref_share_restricted": "", "ref_share_licence_stated": "", "note": m["note"]})
+                drows.append({**base, "open": "", "restricted": "", "licence_stated": "", "reference": "",
+                              "ref_datasets": "", "ref_share_open": "", "ref_share_restricted": "", "ref_share_licence_stated": "", "note": m["note"]})
                 continue
             c = ref[m["client"]]
             k = a if a in c and c[a][0] >= MIN_AREA else "all"
-            n, res, lic = c[k]
-            drows.append({**base, "restricted": m["dc_restricted"], "licence_stated": m["dc_licence"],
+            n, res, lic, opn = c[k]
+            drows.append({**base, "open": m["dc_open"], "restricted": m["dc_restricted"],
+                          "licence_stated": m["dc_licence"],
                           "reference": "same repository, same area" if k != "all" else "whole repository",
-                          "ref_datasets": n, "ref_share_restricted": round(res / n, 4) if n else "",
+                          "ref_datasets": n, "ref_share_open": round(opn / n, 4) if n else "",
+                          "ref_share_restricted": round(res / n, 4) if n else "",
                           "ref_share_licence_stated": round(lic / n, 4) if n else "", "note": ""})
     with open(os.path.join(out_dir, "field_norm_datasets.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(drows[0])); w.writeheader(); w.writerows(drows)

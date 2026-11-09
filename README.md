@@ -215,9 +215,12 @@ institution's full texts, the year chart shows the trend over time.
 ### Repository reference for dataset openness (optional)
 
 `python field_norm.py` (after the pipeline) compares each own DataCite dataset with **the other
-datasets in its own repository**, in the SSIF area of the paper that cites it. Two measures, same
-rules on both sides, from DataCite's rights: *restricted access* (closed / restricted / embargoed /
-metadata-only access right) and *licence stated*.
+datasets in its own repository**, in the SSIF area of the paper that cites it. Three measures, same
+rules on both sides, from DataCite's rights: *open access* (access right stated as open),
+*restricted access* (closed / restricted / embargoed / metadata-only) and *licence stated*. Access
+and licence are separate fields: many datasets state no access right at all (recent Zenodo records,
+SciLifeLab), SND has many open datasets without a licence, so open + restricted can be < 100 % and
+"licence stated" is not "open".
 - The reference is the same repository + same SSIF area when the repository puts SSIF or OECD FOS
   subjects on its datasets (SND, DORIS; FOS names come from Swepub's SSIF list, with the few OECD
   wordings that differ in `FOS_NAME`) and has at least 20 datasets there; otherwise the whole
