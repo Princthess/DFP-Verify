@@ -68,14 +68,17 @@ def _disagreement(c):
 # ---- summary.csv: the plain per-paper verdict (the combined answer, no tool breadcrumbs) ----
 
 REG_ONLY_VERDICT = "no data in paper; dataset linked via DataCite"
+NO_DATA_STATED = "no data generated (paper says so)"
 
 SHARED_ACCESS = {"open": "open", "restricted": "restricted access", "mixed": "restricted access",
                  "unknown": "access unknown"}
 
-def _summary_label(own, likely, reused, reg_only=(), openness=""):
+def _summary_label(own, likely, reused, reg_only=(), openness="", no_data=""):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
     DataCite-only links never count as sharing; they only replace a bare 'no data found'.
+    A no-data signal (nodata.py: the paper says no data were generated, or it is a review/editorial)
+    also only replaces a bare 'no data found' -- it splits "not shared, or no data" in two.
     Shared data with restricted access (deposited, access on conditions -- e.g. personal data) still
     counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
     'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed."""
@@ -83,6 +86,7 @@ def _summary_label(own, likely, reused, reg_only=(), openness=""):
     if likely:   return "declared, unverifiable"
     if reused:   return "reuses data only"
     if reg_only: return REG_ONLY_VERDICT
+    if no_data:  return NO_DATA_STATED
     return "no data found"
 
 def _own_openness(own_open, own_restr, unknown):
@@ -127,6 +131,9 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         n = len(reg_only)
         notes.append(f"Not counted as shared: DataCite links {n} dataset{'s' if n > 1 else ''} to this paper, "
                      f"but the paper does not cite {'them' if n > 1 else 'it'}")
+    nd = pm.get("no_data_signal", "")
+    if nd and (own or likely):
+        notes.append("check: the paper says it has no data of its own, yet cites own/declared data")
     st = pm.get("doi_status", "")
     if st == "corrected":   notes.append(f"paper DOI corrected by title check (given: {pm.get('paper_doi') or 'none'})")
     if st == "found":       notes.append("paper DOI found by title check (none given)")
@@ -136,7 +143,7 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "doi":           _paper_doi_cols(pm)["dv_paper_doi"],
         "year":          pm.get("year", ""),
         "data_verdict":  _summary_label(own, likely, reused, reg_only,
-                                        openness=_own_openness(own_open, own_restr, unknown)),
+                                        openness=_own_openness(own_open, own_restr, unknown), no_data=nd),
         "openness":      _own_openness(own_open, own_restr, unknown),
         "datasets":      _dataset_cell(confirmed, likely),
         "linked_via_datacite_not_in_paper": "; ".join(f"{c.get('provenance') or '?'}: {c.get('repository') or 'DataCite'}:"
@@ -144,6 +151,9 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "reuses_data":   "yes" if reused else "no",
         "field":         pm.get("field", ""),
         "field_source":  pm.get("field_source", ""),
+        # pattern search + article type now; an LLM's own judgment goes in no_data_llm (empty for now)
+        "no_data_signal": nd,
+        "no_data_llm":   pm.get("no_data_llm", ""),
         "note":          "; ".join(notes),
     }
 
@@ -250,7 +260,8 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
     with open(os.path.join(out_dir, "summary.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
-                                          "reuses_data", "field", "field_source", "note"])
+                                          "reuses_data", "field", "field_source", "no_data_signal",
+                                          "no_data_llm", "note"])
         w.writeheader(); w.writerows(summary_rows)
     with open(os.path.join(out_dir, "per_dataset.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "identifier", "kind", "source", "registry", "found_in",

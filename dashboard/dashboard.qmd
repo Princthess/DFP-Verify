@@ -47,12 +47,15 @@ SHARED, SH_RESTR, SH_UNK = ("shared own data (open)", "shared own data (restrict
                             "shared own data (access unknown)")
 REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "reuses data only",
                               "declared, unverifiable", "no data found")
-ORDER  = [SHARED, SH_RESTR, SH_UNK, REGONLY, REUSE, DECL, NONE]
+NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words, or a review/editorial
+ORDER  = [SHARED, SH_RESTR, SH_UNK, REGONLY, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
           SH_UNK: "Shares own data: access unknown", REGONLY: "DataCite link only (not counted)",
-          REUSE: "Reuses data only", DECL: "Declared, not verifiable", NONE: "No data found"}
+          REUSE: "Reuses data only", DECL: "Declared, not verifiable",
+          NOGEN: "No data generated (paper says so)", NONE: "No data found (not shared, or no data)"}
+# the two "no data" categories share the gray family; lighter = the paper explains it has none
 COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", REGONLY: "#eb6834", REUSE: "#1baf7a",
-          DECL: "#eda100", NONE: "#c3c2b7"}
+          DECL: "#eda100", NOGEN: "#dedcd3", NONE: "#b4b2a8"}
 INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
 
 def style(fig, h=None):
@@ -227,11 +230,11 @@ ACC = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"),
        ("mixed", "Mixed (open + restricted)", "#2a78d6"), ("unknown", "Shared, access unknown", "#6250d6"),
        ("declared", "Declared, not verifiable", "#8d8b84"), ("reuse", "Reuses data only", "#e87ba4"),
        ("regonly", "DataCite link only (not counted)", "#eb6834"),
-       ("none", "No data found (not shared, or no data)", "#c3c2b7")]
+       ("nogen", LABEL[NOGEN], COLOR[NOGEN]), ("none", LABEL[NONE], COLOR[NONE])]
 ACC_LABEL = {k: l for k, l, _ in ACC}
 def access(r):
     if r.data_verdict.startswith("shared own data"): return r.openness if r.openness in ("open", "restricted", "mixed") else "unknown"
-    return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly"}.get(r.data_verdict, "none")
+    return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly", NOGEN: "nogen"}.get(r.data_verdict, "none")
 S["access"] = S.apply(access, axis=1)
 
 def access_bars(fig, df, x, row=None, col=None, seen=None):
@@ -367,8 +370,10 @@ abstract (`field_source` = *swepub classify*; on this corpus it agreed with the 
 whenever it made a suggestion). A paper with codes in two areas counts in both, so the field bars can
 add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no abstract). Colours in the field chart follow the legend of the year chart.
 
-**Access** charts count *papers*, so papers without data stay in the picture. *No data found* can
-mean the data were not shared or that the paper has no data; the tool can't tell the two apart.
+**Access** charts count *papers*, so papers without data stay in the picture. *No data generated* =
+the paper itself says it has no data of its own ("no new data were generated", "data sharing not
+applicable"), or it is a review / editorial (pattern search + OpenAlex type; see `no_data_signal`).
+*No data found* = everything else without data: not shared, or no data, which the tool can't tell apart.
 Access comes from the DataCite rights of the paper's own datasets; *mixed* = some open, some restricted.
 
 **Repository**: the repository that registered the DOI in DataCite (e.g. SND, Chalmers DORIS,
@@ -528,6 +533,11 @@ for f, r in pdoi.iterrows():
 for p, g in D[D.status == "datacite-only"].groupby("paper"):
     add(G_PAPER, "DataCite links datasets the paper doesn't cite", NAME.get(p, p), f"{len(g)} dataset(s)",
         "Not counted. Check the published version, or the dataset's metadata")
+# the paper says it has no data of its own, but the tool found own or declared data in it
+for _, r in S[(S.no_data_signal != "") & (S.data_verdict.str.startswith("shared own data")
+                                          | (S.data_verdict == DECL))].iterrows():
+    add(G_PAPER, "Paper says it has no data, yet cites own data", r.paper, r.no_data_signal[:90],
+        "Read the data statement: is the cited dataset the authors' own?")
 
 Q = pd.DataFrame(rows, columns=["group", "issue", "paper", "identifier", "todo"])
 GCOL = {G_ID: COLOR[SHARED], G_TOOLS: COLOR[REGONLY], G_PAPER: COLOR[REUSE]}

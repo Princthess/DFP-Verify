@@ -87,6 +87,15 @@ class FieldCache:
                 return None                                   # network error: don't remember
         return self._mem[k]
 
+    def work_type(self, doi):
+        """OpenAlex work type ('article', 'review', 'editorial', ...), '' if unknown. For nodata.py."""
+        k = "oatype|" + doi.lower()
+        if k not in self.d:
+            j = self._openalex_work(doi)
+            if j is None: return ""
+            self.d[k] = j.get("type") or ""
+        return self.d[k]
+
     def openalex(self, doi):
         k = "openalex|" + doi.lower()
         if k not in self.d:

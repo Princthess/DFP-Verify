@@ -8,7 +8,7 @@ Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; re
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
-import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields
+import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields, nodata
 
 # ----------------------------------- CONFIG -----------------------------------
 TEXT_DIR   = r"path/to/paper_txt"            # folder of per-paper .txt (the regex detector's input)
@@ -54,6 +54,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         text = open(txt, encoding="utf-8", errors="ignore").read()
         header[p] = text[:2500]                       # first-page author block (for own/reused)
         heads[p]  = detect_union.normalize_text(text[:6000])   # first page(s), for the paper-DOI check
+        paper_meta.setdefault(p, {})["no_data_quote"] = nodata.statement(text)   # "no new data were generated"
         cands = detect_union.union_detect(text=text, dfp_rows=dfp_by.get(p, []))
         # in-text provenance: locate each id against the DAS / reference / supplement landmarks.
         # DAS region is found by the heading locator; DFP's own source_section also counts.
@@ -124,7 +125,12 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         ok = pm.get("doi_status") in ("confirmed", "corrected", "found")
         pm.update(fields.paper_field(pm.get("dv_paper_doi") if ok else "", fc))
         fstat[pm.get("field_source") or "none"] += 1
+        # does the paper say it has no data of its own? (its own words, else a no-data article type)
+        pm["no_data_signal"] = nodata.signal(pm.get("no_data_quote", ""),
+                                             fc.work_type(pm["dv_paper_doi"]) if ok else "")
     print("  " + " | ".join(f"{k}:{v}" for k, v in fstat.most_common()))
+    n_nd = sum(1 for p in per_paper if paper_meta.get(p, {}).get("no_data_signal"))
+    print(f"  no-data signal (paper says it has no data, or no-data article type): {n_nd} paper(s)")
 
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")
