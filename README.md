@@ -219,12 +219,14 @@ writes `output/field_norm.csv`: per SSIF area and publication year, how many Dat
 are, how many have restricted access (closed / restricted / embargoed access right) and how many state
 a licence. Datasets get an area from their OECD Fields of Science subjects (SSIF is built on OECD FOS;
 names come from Swepub's SSIF list, with the few OECD wordings that differ in `FOS_NAME`). Every area
-is counted twice: all datasets, and without the area's largest repository.
+is counted twice: all datasets, and without the area's largest repository. Each dataset counts once:
+DOIs that DataCite marks as a version of (*IsVersionOf*) or identical to (*IsIdenticalTo*, figshare's
+`.v1` twins) another DOI are left out, as the pipeline collapses versions.
 
 It is a reference for **dataset openness**, not a field norm for **sharing**: DataCite holds datasets,
 not the papers that shared nothing, so it can't give a share of papers. Other limits: only datasets
 with a FOS subject count (many repositories, e.g. Zenodo, set none), and single registrants dominate
-(figshare 46–92 % of five areas, the specimen registry DiSSCo 68 % of Natural sciences, at
+(figshare 44–90 % of five areas, the specimen registry DiSSCo 74 % of Natural sciences, at
 2026-11-09). The dashboard shows the comparison on the Overview page when the file exists.
 
 ## Status & scope

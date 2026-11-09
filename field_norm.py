@@ -13,7 +13,8 @@ per SSIF area (1-6) and publication year.
 How datasets get an area: their DataCite subjects in the OECD Fields of Science scheme ("FOS: ...").
 SSIF is built on OECD FOS, so the six areas and most subjects share names; the names come from Swepub's
 SSIF list (via fields.FieldCache), and FOS_NAME holds the few places where the OECD wording differs.
-A dataset with FOS subjects in two areas counts in both; within an area it counts once.
+A dataset with FOS subjects in two areas counts in both; within an area it counts once. Versions and
+duplicate DOIs of the same dataset count once (see ONE_PER_DATASET).
 
 Limits, stated in the output too:
   - only datasets that have a FOS subject are counted (a small share of DataCite; Zenodo sets none);
@@ -36,7 +37,11 @@ FOS_NAME = {"4": "Agricultural sciences", "6": "Humanities", "101": "Mathematics
             "305": "Other medical sciences", "604": "Arts (arts, history of arts, performing arts, music)"}
 RESTRICTED = ("rightsList.rightsUri:(*restrictedAccess OR *closedAccess OR *embargoedAccess "
               "OR *metadataonlyAccess)")
-LICENCE = "(rightsList.rightsIdentifier:* OR rightsList.rightsUri:(*creativecommons* OR *opendatacommons*))"
+# One count per dataset, as the pipeline collapses versions: leave out DOIs that say they are a version
+# of another DOI (Zenodo, Mendeley Data, 4TU: the concept DOI stays) or identical to one (figshare
+# registers every item twice, "<doi>" and "<doi>.v1"). Relations are self-reported, so a few stay.
+ONE_PER_DATASET = "relatedIdentifiers.relationType:(IsVersionOf OR IsIdenticalTo)"
+LICENCE ="(rightsList.rightsIdentifier:* OR rightsList.rightsUri:(*creativecommons* OR *opendatacommons*))"
 
 def _meta(query):
     r = requests.get(API + "/dois", headers=UA, timeout=180,
@@ -60,7 +65,7 @@ def area_queries(ssif):
     for a in "123456":
         labels = [FOS_NAME.get(a, ssif[a])] + [FOS_NAME.get(c, n) for c, n in sorted(ssif.items())
                                               if len(c) == 3 and c[0] == a]
-        q = "subjects.subject:(" + " OR ".join(f'"FOS: {l}"' for l in labels) + ")"
+        q = ("subjects.subject:(" + " OR ".join(f'"FOS: {l}"' for l in labels) + ") AND NOT " + ONE_PER_DATASET)
         out[a] = (ssif[a], labels, q)
     return out
 

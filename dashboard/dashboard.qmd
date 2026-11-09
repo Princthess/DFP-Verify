@@ -468,8 +468,10 @@ right restricted, closed or embargoed; *licence stated* = a licence in the DataC
 **Read it with care:**
 
 - Only a small part of DataCite has a field subject; many repositories (e.g. Zenodo) set none.
-- One registrant can dominate an area: figshare is 46–92 % of five areas and the specimen
-  registry DiSSCo 68 % of Natural sciences. The lightest bar leaves the largest one out, to show how
+- Versions and duplicate DOIs of one dataset count once (DOIs marked *IsVersionOf* or
+  *IsIdenticalTo* another are left out), as in the pipeline.
+- One registrant can dominate an area: figshare is 44–90 % of five areas and the specimen
+  registry DiSSCo 74 % of Natural sciences. The lightest bar leaves the largest one out, to show how
   much it moves the number.
 - It cannot say what share of *papers* share data: DataCite holds datasets, not the papers that
   shared nothing.
