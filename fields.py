@@ -13,9 +13,9 @@ so there is no table to maintain here.
 
 Public API:
   FieldCache(path)
-  paper_field(doi, cache) -> {"field_area", "field", "field_source"}
+  paper_field(doi, cache) -> {"field", "field_source"}
   dataset_subjects(datacite_attributes) -> [{"scheme": "ssif"|"fos", "code", "label"}]
-  format_dataset_field(subject_lists, cache) -> str
+  format_subjects(subjects, cache) -> str   (one dataset's subjects, for per_dataset.csv)
 """
 import json, os, re, time, requests
 
@@ -90,18 +90,16 @@ def _label(code, names):
     return f"{code} {names[code]}" if code in names else f"{code} (not in current SSIF; older standard?)"
 
 def paper_field(doi, cache):
-    empty = {"field_area": "", "field": "", "field_source": ""}
+    """The SSIF area (6 top-level areas) is just the code's first digit -- derive it at analysis time."""
+    empty = {"field": "", "field_source": ""}
     if not doi: return empty
     codes = cache.swepub_codes(doi)
     if codes:
         names = cache.ssif()
-        areas = list(dict.fromkeys(names.get(c[0], c[0]) for c in codes))
-        return {"field_area": "; ".join(areas), "field": "; ".join(_label(c, names) for c in codes),
-                "field_source": "swepub (SSIF)"}
+        return {"field": "; ".join(_label(c, names) for c in codes), "field_source": "swepub (SSIF)"}
     oa = cache.openalex(doi)
     if oa:
-        return {"field_area": oa["domain"], "field": f"{oa['field']} > {oa['subfield']}",
-                "field_source": "openalex (ASJC, automatic)"}
+        return {"field": f"{oa['field']} > {oa['subfield']}", "field_source": "openalex (ASJC, automatic)"}
     return empty
 
 def dataset_subjects(attrs):
@@ -121,12 +119,8 @@ def dataset_subjects(attrs):
             seen.add(key); out.append({"scheme": key[0], "code": code if key[0] == "ssif" else "", "label": subj})
     return out
 
-def format_dataset_field(subject_lists, cache):
-    """Union over a paper's datasets: SSIF codes (named) if any dataset has them, plus FOS labels."""
-    names, ssif, fos = cache.ssif(), [], []
-    for subs in subject_lists:
-        for s in subs or []:
-            if s["scheme"] == "ssif" and s["code"] not in ssif: ssif.append(s["code"])
-            if s["scheme"] == "fos" and s["label"] not in fos: fos.append(s["label"])
-    parts = [f"SSIF {_label(c, names)}" for c in ssif] + [f"FOS {f}" for f in fos]
-    return "; ".join(parts)
+def format_subjects(subjects, cache):
+    """One dataset's SSIF codes (named) + FOS labels, e.g. 'SSIF 10608 Zoology; FOS Biological sciences'."""
+    names = cache.ssif()
+    return "; ".join([f"SSIF {_label(s['code'], names)}" for s in subjects or [] if s["scheme"] == "ssif"] +
+                     [f"FOS {s['label']}" for s in subjects or [] if s["scheme"] == "fos"])

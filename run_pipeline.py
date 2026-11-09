@@ -151,9 +151,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
             if c.get("registry", "").startswith("not in text") and c.get("status") == "confirmed":
                 c["status"] = "datacite-only"; n_reg += 1
     print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)")
-    for p, cands in per_paper.items():                # datasets' own subjects -- cross-check only
-        paper_meta.setdefault(p, {})["dataset_field"] = fields.format_dataset_field(
-            [c.get("subjects") for c in cands if c.get("status") == "confirmed"], fc)
+    for cands in per_paper.values():                  # each dataset's own subjects -- cross-check only
+        for c in cands:
+            if c.get("subjects"): c["subject"] = fields.format_subjects(c["subjects"], fc)
     fc.save()
 
     # STAGE 3: fuse -> buckets (summary.csv headline + per_dataset + DFP-superset merged_output.csv)

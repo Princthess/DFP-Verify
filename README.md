@@ -119,8 +119,7 @@ breadcrumbs — just the answer). Columns:
 | `datasets` | every confirmed dataset the paper cites, tagged `own:` / `reused:`, plus `declared?:` for declared ids that didn't verify |
 | `linked_via_datacite_not_in_paper` | datasets DataCite links to the paper that the paper does **not** cite — reported, **not counted** |
 | `reuses_data` | yes / no |
-| `field_area` · `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`), else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data |
-| `dataset_field` | the cited datasets' own subjects from DataCite (SSIF from SND, FOS from many repositories) — a cross-check, not the anchor |
+| `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`), else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data. The SSIF area is the code's first digit |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections |
 
 `data_verdict`, in priority order:
@@ -135,14 +134,17 @@ breadcrumbs — just the answer). Columns:
 A dataset id that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a
 DataCite-linked DOI **does** count, with a `note` showing the id as written and the registered DOI.
 
-**`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump).
+**`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump). Its
+`subject` column holds the dataset's own subjects from DataCite (SSIF from SND, FOS from many
+repositories) — a cross-check against the paper's `field`, never the anchor.
 
 **`merged_output.csv` — the reconciliation / audit view.** A strict superset of a DFP row: DFP's 16
 columns verbatim (`file … vlm`), then DFP-Verify's `dv_` columns. A blank DFP column = the id came from
 the regex pass or DataCite, not DFP (`dv_detected_by` says which). `dv_disagreement` names where the two tools differ and which signal decided
 (e.g. `isdata: DFP=dataset, registry=not-data`); `dv_provenance_by` records the deciding signal per row.
 `dv_paper_doi` is the title-checked paper DOI (= summary's `doi`; DFP's own `paper_doi` stays verbatim),
-with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed.
+with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed. `dv_field` / `dv_field_source`
+repeat the paper's field on each row (same as summary's `field` / `field_source`).
 `dv_registry` shows the DataCite reverse-lookup result per row: `linked` (in the text and linked in
 DataCite) · `repaired (text had …)` · `linked (landing page in text)` (cited by its landing-page URL;
 counts) · `not in text` (found only via DataCite; status `datacite-only`, not counted) · blank (no link).
