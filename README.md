@@ -191,8 +191,8 @@ recomputes nothing and makes no lookups. It has three pages:
   per year by access to their own data (open / restricted / mixed, plus DataCite-only and *no data
   found* so the denominator stays visible; count or percent), a heatmap of SSIF area × year whose
   cells show the share of papers sharing their own data (openly, or open + restricted; text "k/n",
-  hover for the full breakdown), where own datasets are deposited, and (if `field_norm.csv` exists)
-  own datasets vs all of DataCite per SSIF area — see *DataCite reference* below.
+  hover for the full breakdown), where own datasets are deposited, and (if `field_norm.py` has run)
+  own datasets vs their own repositories per SSIF area — see *Repository reference* below.
 - **Tool check**: monitoring the tool itself. Which source found each dataset (DFP and regex, one of
   them, or only DataCite), the self-check score, and a to-do list of what to check by hand: broken
   ids (repaired, dead declared links, data statements without an id), rows where DFP and DFP-Verify
@@ -212,22 +212,30 @@ QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads o
 The result is a self-contained `dashboard/dashboard.html` (not committed). Run on a whole
 institution's full texts, the year chart shows the trend over time.
 
-### DataCite reference per field (optional)
+### Repository reference for dataset openness (optional)
 
-`python field_norm.py` asks DataCite for counts (no records are downloaded; about 40 requests) and
-writes `output/field_norm.csv`: per SSIF area and publication year, how many DataCite datasets there
-are, how many have restricted access (closed / restricted / embargoed access right) and how many state
-a licence. Datasets get an area from their OECD Fields of Science subjects (SSIF is built on OECD FOS;
-names come from Swepub's SSIF list, with the few OECD wordings that differ in `FOS_NAME`). Every area
-is counted twice: all datasets, and without the area's largest repository. Each dataset counts once:
-DOIs that DataCite marks as a version of (*IsVersionOf*) or identical to (*IsIdenticalTo*, figshare's
-`.v1` twins) another DOI are left out, as the pipeline collapses versions.
+`python field_norm.py` (after the pipeline) compares each own DataCite dataset with **the other
+datasets in its own repository**, in the SSIF area of the paper that cites it. Two measures, same
+rules on both sides, from DataCite's rights: *restricted access* (closed / restricted / embargoed /
+metadata-only access right) and *licence stated*.
+- The reference is the same repository + same SSIF area when the repository puts SSIF or OECD FOS
+  subjects on its datasets (SND, DORIS; FOS names come from Swepub's SSIF list, with the few OECD
+  wordings that differ in `FOS_NAME`) and has at least 20 datasets there; otherwise the whole
+  repository (e.g. SciLifeLab, which uses ANZSRC subjects).
+- Repositories up to 20,000 datasets are read record by record (sparse fields, 1,000 per page, so SSIF
+  codes are matched exactly); bigger ones (Zenodo) are counted with DataCite's search on FOS subjects.
+- Each dataset counts once: DOIs marked as a version of (*IsVersionOf*) or identical to
+  (*IsIdenticalTo*, figshare's `.v1` twins) another DOI are left out, as the pipeline collapses versions.
+- Accessions (ENA, PRIDE …) are not in DataCite and are not compared.
 
-It is a reference for **dataset openness**, not a field norm for **sharing**: DataCite holds datasets,
-not the papers that shared nothing, so it can't give a share of papers. Other limits: only datasets
-with a FOS subject count (many repositories, e.g. Zenodo, set none), and single registrants dominate
-(figshare 44–90 % of five areas, the specimen registry DiSSCo 74 % of Natural sciences, at
-2026-11-09). The dashboard shows the comparison on the Overview page when the file exists.
+Writes `output/field_norm.csv` (reference per repository × area, and per whole repository) and
+`output/field_norm_datasets.csv` (each own dataset with the reference it is compared to). The
+dashboard shows own vs expected per SSIF area on the Overview page when the files exist.
+
+Why not all of DataCite: only a few registrants put field subjects on datasets (figshare is 44–90 %
+of five areas, the specimen registry DiSSCo 74 % of Natural sciences, at 2026-11-09), so an
+all-of-DataCite field figure mostly describes them. It is a reference for **dataset openness**, not a
+norm for the share of **papers** that share data: DataCite holds no papers that shared nothing.
 
 ## Status & scope
 
