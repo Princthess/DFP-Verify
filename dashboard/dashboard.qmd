@@ -153,7 +153,7 @@ for v in ORDER:
         _ = fig.add_bar(x=yr.index, y=yr[v], name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
                     hovertemplate="%{x}: %{y} paper(s)<extra>" + LABEL[v] + "</extra>")
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
-                  updatemenus=[dict(type="buttons", direction="right", x=1, xanchor="right", y=1.12, showactive=True,
+                  updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
                                     bgcolor="white", bordercolor=GRID, font=dict(size=12),
                                     buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
                                              dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
@@ -250,7 +250,7 @@ ay = S[S.year != ""]
 fig = go.Figure()
 t_ay = access_bars(fig, ay, "year")
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
-                      updatemenus=[dict(type="buttons", direction="right", x=1, xanchor="right", y=1.12, showactive=True,
+                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
                                         bgcolor="white", bordercolor=GRID, font=dict(size=12),
                                         buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
                                                  dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
@@ -270,23 +270,46 @@ data_tab(ay.assign(access=ay.access.map(ACC_LABEL))[["paper", "year", "access", 
 ### Column {.tabset}
 
 ```{python}
-#| title: "Access by research field and year (papers)"
-from plotly.subplots import make_subplots
+#| title: "Sharing by research field and year (share of papers)"
+# Heatmap: SSIF area x year. Cell colour = share of that cell's papers sharing their own data
+# (openly, or open + restricted: button), text = "k/n" papers; hover = the full access breakdown.
 fy = S[S.year != ""].explode("areas")
-area_list = list(fy.groupby("areas").size().sort_values(ascending=False).index)
+area_list = list(fy.groupby("areas").size().sort_values().index)          # most papers on top
 years = sorted(fy.year.unique())
-ncol = min(4, len(area_list)); nrow = -(-len(area_list) // ncol)
-fig = make_subplots(rows=nrow, cols=ncol, subplot_titles=area_list, shared_yaxes=True,
-                    horizontal_spacing=0.03, vertical_spacing=0.16)
-seen = set()
-for i, a in enumerate(area_list):
-    _ = access_bars(fig, fy[fy.areas == a], "year", row=i // ncol + 1, col=i % ncol + 1, seen=seen)
-# every panel: all years on the x axis and one common y scale, so panels compare like for like
-_ = fig.update_xaxes(type="category", categoryorder="array", categoryarray=years, range=[-0.5, len(years) - 0.5],
-                     tickfont=dict(size=10))
-_ = fig.update_yaxes(matches="y", rangemode="tozero")
-_ = style(fig).update_layout(barmode="stack", margin=dict(t=28), legend=dict(y=-0.12))
-_ = fig.update_annotations(font=dict(size=12, color=INK2))
+SHARED_KEYS = ("open", "restricted", "mixed", "unknown")
+def grid(numer):
+    z, txt, hov = [], [], []
+    for a in area_list:
+        zr, tr, hr = [], [], []
+        for y in years:
+            cell = fy[(fy.areas == a) & (fy.year == y)]
+            n = len(cell)
+            if not n:
+                zr.append(None); tr.append(""); hr.append(""); continue
+            k = int(cell.access.isin(numer).sum())
+            zr.append(100 * k / n); tr.append(f"{k}/{n}")
+            hr.append("<br>".join(f"{ACC_LABEL[c]}: {m}" for c, m in cell.access.value_counts().items()))
+        z.append(zr); txt.append(tr); hov.append(hr)
+    return z, txt, hov
+z_open, t_open, h_open = grid(("open",))
+z_any,  t_any,  h_any  = grid(SHARED_KEYS)
+BLUES = [[0, "#cde2fb"], [0.25, "#9ec5f4"], [0.5, "#5598e7"], [0.75, "#256abf"], [1, "#104281"]]
+fig = go.Figure(go.Heatmap(z=z_open, x=years, y=area_list, text=t_open, customdata=h_open,
+                           texttemplate="%{text}", textfont=dict(size=12), colorscale=BLUES, zmin=0, zmax=100,
+                           xgap=3, ygap=3, hoverongaps=False,
+                           colorbar=dict(title=dict(text="% of papers", side="right"), ticksuffix="%",
+                                         thickness=10, len=0.9),
+                           hovertemplate="<b>%{y}, %{x}</b><br>%{text} papers share (%{z:.0f}%)"
+                                         "<br>%{customdata}<extra></extra>"))
+_ = fig.update_layout(updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.02,
+                                        yanchor="bottom",
+                                        showactive=True, bgcolor="white", bordercolor=GRID, font=dict(size=12),
+                                        buttons=[dict(label="Share openly", method="restyle",
+                                                      args=[{"z": [z_open], "text": [t_open], "customdata": [h_open]}]),
+                                                 dict(label="Share (open or restricted)", method="restyle",
+                                                      args=[{"z": [z_any], "text": [t_any], "customdata": [h_any]}])])])
+_ = style(fig).update_layout(margin=dict(t=44), xaxis=dict(type="category", showgrid=False),
+                             yaxis=dict(showgrid=False))                   # blank cell = no papers
 fig
 ```
 
