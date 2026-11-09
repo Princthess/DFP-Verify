@@ -9,7 +9,7 @@ format:
         <script>
         // Plotly measures text (legends, value labels) while a dashboard card is still hidden and
         // caches the zero widths per font. Once a chart is visible, a tiny font-name change forces a
-        // fresh measurement -- on load and whenever a dashboard page is shown.
+        // fresh measurement -- on load and whenever a dashboard page or card tab is shown.
         function dvRedraw() {
           document.querySelectorAll('.js-plotly-plot').forEach(function (el) {
             if (el.clientWidth > 0 && el.offsetParent !== null && !el.dataset.dvDone) {
@@ -30,10 +30,11 @@ execute:
 #| include: false
 # Reads the pipeline's own outputs -- nothing is recomputed or looked up here.
 # Folder: DV_OUT_DIR (same variable as run_pipeline.py), else ../output.
-import os, re
+# Every chart card has a "Data" tab: the rows behind the chart + CSV downloads (counts and rows).
+import os, re, urllib.parse
 import pandas as pd
 import plotly.graph_objects as go
-from IPython.display import Markdown
+from IPython.display import Markdown, HTML
 
 OUT = os.environ.get("DV_OUT_DIR") or os.path.join("..", "output")
 S = pd.read_csv(os.path.join(OUT, "summary.csv"), encoding="utf-8-sig", dtype=str).fillna("")
@@ -59,9 +60,28 @@ def style(fig, h=None):
 
 def pct(a, b): return f"{100 * a / b:.0f}%" if b else "–"
 
+def _csv_link(df, label, filename):
+    """A download button with the CSV inlined as a data: URI (BOM so Excel reads UTF-8)."""
+    uri = "data:text/csv;charset=utf-8," + urllib.parse.quote("﻿" + df.to_csv(index=False))
+    return (f'<a class="btn btn-sm btn-outline-secondary" style="display:inline-block !important;width:auto !important;flex:0 0 auto !important" '
+            f'download="{filename}" href="{uri}">{label}</a>')
+
+def data_tab(rows, name, counts=None):
+    """Data tab of a chart card: download buttons + the rows behind the chart, as a table.
+    The table scrolls in its own box, so the dashboard's sticky table header can't cover the buttons."""
+    btns = _csv_link(rows, f"Download rows ({len(rows)}) as CSV", f"{name}_rows.csv")
+    if counts is not None:
+        btns = _csv_link(counts, "Download counts (as in the chart) as CSV", f"{name}_counts.csv") + btns
+    table = rows.to_html(index=False, border=0, escape=True, classes="table table-sm table-striped small")
+    return HTML('<div style="display:flex;flex-direction:column;height:100%;min-height:0">'
+                f'<div style="display:flex !important;flex-direction:row !important;gap:8px;flex-wrap:wrap;'
+                f'padding-bottom:8px;flex:none !important">{btns}</div>'
+                f'<div style="flex:1;min-height:0;overflow:auto">{table}</div></div>')
+
 # ---- paper level
 S["verdict"] = pd.Categorical(S["data_verdict"], ORDER, ordered=True)
 S["key"] = S["paper"].str.replace(r"\.[^.]+$", "", regex=True).str.lower()
+NAME = dict(zip(S.key, S.paper))                    # per_dataset's paper key -> file name
 N = len(S)
 n_shared = int((S.data_verdict == SHARED).sum())
 
@@ -78,6 +98,7 @@ S["areas"] = S.apply(areas, axis=1)
 # ---- dataset level: datasets the papers share as their own (counted)
 D["counted"] = (D.status == "confirmed") & (D.provenance == "own")
 OWN = D[D.counted].merge(S[["key", "year"]], left_on="paper", right_on="key", how="left")
+OWN["paper"] = OWN.paper.map(lambda k: NAME.get(k, k))
 ```
 
 # Overview {scrolling="true"}
@@ -112,7 +133,9 @@ dict(value=len(OWN), color="light")
 dict(value=pct(int((OWN.openness == "open").sum()), len(OWN)), color="light")
 ```
 
-## Row {height=420px}
+## Row {height=440px}
+
+### Column {.tabset}
 
 ```{python}
 #| title: "Papers per publication year, by data verdict"
@@ -132,6 +155,14 @@ fig
 ```
 
 ```{python}
+#| title: "Data"
+data_tab(S[["paper", "year", "data_verdict", "datasets"]].sort_values(["year", "paper"]), "papers_per_year",
+         counts=yr.loc[:, yr.sum() > 0].rename(columns=LABEL).reset_index())
+```
+
+### Column {.tabset}
+
+```{python}
 #| title: "Data verdict, all papers"
 vc = S.verdict.value_counts().reindex(ORDER).fillna(0).astype(int)
 vc = vc[vc > 0][::-1]
@@ -144,7 +175,16 @@ _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, vc.max() * 1.35
 fig
 ```
 
-## Row {height=360px}
+```{python}
+#| title: "Data"
+data_tab(S[["paper", "data_verdict", "openness", "note"]].sort_values(["data_verdict", "paper"]), "verdicts",
+         counts=pd.DataFrame({"verdict": [LABEL[v] for v in vc.index[::-1]], "papers": vc.values[::-1],
+                              "share": [pct(n, N) for n in vc.values[::-1]]}))
+```
+
+## Row {height=380px}
+
+### Column {.tabset}
 
 ```{python}
 #| title: "By research field (SSIF area from Swepub)"
@@ -160,6 +200,15 @@ for v in ORDER:
 _ = style(fig).update_layout(barmode="stack", showlegend=False)
 fig
 ```
+
+```{python}
+#| title: "Data"
+data_tab(ex[["paper", "areas", "data_verdict", "field", "field_source"]].rename(columns={"areas": "ssif_area"})
+           .sort_values(["ssif_area", "paper"]), "papers_per_field",
+         counts=fa.loc[::-1, fa.sum() > 0].rename(columns=LABEL).rename_axis("ssif_area").reset_index())
+```
+
+### Column {.tabset}
 
 ```{python}
 #| title: "Own datasets per publication year, by access"
@@ -183,7 +232,15 @@ _ = style(fig).update_layout(margin=dict(t=36))
 fig
 ```
 
-## Row {height=360px}
+```{python}
+#| title: "Data"
+data_tab(oa[["paper", "year", "identifier", "access", "repository", "license"]].sort_values(["year", "paper"]),
+         "own_datasets_per_year", counts=oy.reset_index())
+```
+
+## Row {height=380px}
+
+### Column {.tabset}
 
 ```{python}
 #| title: "Where own datasets are deposited"
@@ -198,6 +255,15 @@ fig = go.Figure(go.Bar(y=rp.index, x=rp.n, orientation="h", marker_color=COLOR[S
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.n.max() * 1.2]), showlegend=False)
 fig
 ```
+
+```{python}
+#| title: "Data"
+data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "license"]].sort_values(["repository", "paper"]),
+         "repositories", counts=rp.iloc[::-1].reset_index().rename(columns={"n": "datasets", "pubs": "publishers"})
+                                 .assign(publishers=lambda d: d.publishers.str.replace("<br>", "; ")))
+```
+
+### Column
 
 ```{python}
 #| title: "How to read this"
@@ -215,6 +281,7 @@ map 1:1 onto SSIF. Colours in the field chart follow the legend of the year char
 SciLifeLab), not the `publisher` field, which names the responsible institution (hover to see it).
 Accessions (ENA, PRIDE …) show the archive.
 
+**Data tab** on each chart: the rows behind it, with CSV downloads of the counts and of the rows.
 Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`.
 """)
 ```
@@ -227,7 +294,6 @@ Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `
 # Sources: per_dataset.csv, merged_output.csv (dv_disagreement), selfcheck.csv (answer key).
 M = pd.read_csv(os.path.join(OUT, "merged_output.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 C = pd.read_csv(os.path.join(OUT, "selfcheck.csv"), encoding="utf-8-sig", dtype=str).fillna("")
-NAME = dict(zip(S.key, S.paper))                    # per_dataset's paper key -> file name
 G_ID, G_TOOLS, G_PAPER = "Broken or missing ids", "DFP and DFP-Verify differ", "Paper metadata"
 rows = []
 def add(group, issue, paper, ident, todo): rows.append(dict(group=group, issue=issue, paper=paper, identifier=ident, todo=todo))
@@ -318,7 +384,9 @@ dict(value=f"{n_found} / {len(C)}" if len(C) else "–", color="light")
 dict(value=int((M.dv_disagreement != "").sum()), color="light")
 ```
 
-## Row {height=380px}
+## Row {height=400px}
+
+### Column {.tabset}
 
 ```{python}
 #| title: "Who found each dataset (in the text, or only via DataCite)"
@@ -335,7 +403,7 @@ R = D[D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("l
 R["finder"] = R.source.map(finder)
 R["kind2"] = R.status.map(lambda s: "Verified dataset" if s == "confirmed" else
                           ("DataCite link only (not counted)" if s == "datacite-only" else "Declared, not verifiable"))
-ft = R.groupby(["finder", "kind2"]).size().unstack(fill_value=0).reindex(FIND[::-1]).fillna(0)
+ft = R.groupby(["finder", "kind2"]).size().unstack(fill_value=0).reindex(FIND[::-1]).fillna(0).astype(int)
 fig = go.Figure()
 for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not counted)", COLOR[REGONLY]),
                ("Declared, not verifiable", COLOR[DECL])]:
@@ -346,6 +414,17 @@ for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not co
 _ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.2))
 fig
 ```
+
+```{python}
+#| title: "Data"
+data_tab(R.assign(paper=R.paper.map(lambda k: NAME.get(k, k)))
+          [["paper", "identifier", "finder", "kind2", "source", "repository"]]
+          .rename(columns={"finder": "found_by", "kind2": "result", "source": "source_code"})
+          .sort_values(["found_by", "paper"]), "who_found_what",
+         counts=ft.iloc[::-1].rename_axis("found_by").reset_index())
+```
+
+### Column {.tabset}
 
 ```{python}
 #| title: "What needs checking"
@@ -362,6 +441,12 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue)), legend=dict(y=-0.12))
 fig
+```
+
+```{python}
+#| title: "Data"
+data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}),
+         "to_check", counts=qc.iloc[::-1][["group", "issue", "n"]].rename(columns={"n": "rows"}))
 ```
 
 ## Row {height=150px}
@@ -382,7 +467,7 @@ DataCite links as an answer key for the two text searches.
 
 ```{python}
 #| title: "To check, row by row"
-Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}).style.hide(axis="index")
+data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}), "to_check")
 ```
 
 # Papers
@@ -391,5 +476,5 @@ Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it mean
 #| title: "All papers (from summary.csv)"
 T = S[["paper", "year", "data_verdict", "openness", "datasets", "linked_via_datacite_not_in_paper", "field", "note"]]
 T = T.rename(columns={"data_verdict": "verdict", "linked_via_datacite_not_in_paper": "DataCite-only"})
-T.sort_values(["year", "paper"], ascending=[False, True]).style.hide(axis="index")
+data_tab(T.sort_values(["year", "paper"], ascending=[False, True]), "papers")
 ```

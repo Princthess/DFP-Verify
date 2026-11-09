@@ -192,6 +192,10 @@ recomputes nothing and makes no lookups. It has three pages:
   `selfcheck.csv`.
 - **Papers**: the summary table.
 
+Every chart card has a **Data** tab next to the chart: the rows behind it as a table, plus CSV
+downloads of the counts (as plotted) and of the rows. The tabs stay available when a card is
+expanded. The to-do list and the papers table have the same CSV download.
+
 ```
 pip install -r requirements-dashboard.txt          # plotly, pandas, jupyter (+ install Quarto)
 QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads output/, or DV_OUT_DIR
