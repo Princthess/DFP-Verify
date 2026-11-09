@@ -41,12 +41,18 @@ S = pd.read_csv(os.path.join(OUT, "summary.csv"), encoding="utf-8-sig", dtype=st
 D = pd.read_csv(os.path.join(OUT, "per_dataset.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 
 # ---- verdict categories: fixed order + fixed colours (colour follows the category, never its rank)
-SHARED, REGONLY, REUSE, DECL, NONE = ("shared own data", "no data in paper; dataset linked via DataCite",
-                                      "reuses data only", "declared, unverifiable", "no data found")
-ORDER  = [SHARED, REGONLY, REUSE, DECL, NONE]
-LABEL  = {SHARED: "Shares own data", REGONLY: "DataCite link only (not counted)",
+# Shared own data is split by access: deposited with restricted access still counts as shared
+# ("as open as possible, as closed as necessary"), but is never shown as open. Same blue hue, lighter.
+SHARED, SH_RESTR, SH_UNK = ("shared own data (open)", "shared own data (restricted access)",
+                            "shared own data (access unknown)")
+REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "reuses data only",
+                              "declared, unverifiable", "no data found")
+ORDER  = [SHARED, SH_RESTR, SH_UNK, REGONLY, REUSE, DECL, NONE]
+LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
+          SH_UNK: "Shares own data: access unknown", REGONLY: "DataCite link only (not counted)",
           REUSE: "Reuses data only", DECL: "Declared, not verifiable", NONE: "No data found"}
-COLOR  = {SHARED: "#2a78d6", REGONLY: "#eb6834", REUSE: "#1baf7a", DECL: "#eda100", NONE: "#c3c2b7"}
+COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", REGONLY: "#eb6834", REUSE: "#1baf7a",
+          DECL: "#eda100", NONE: "#c3c2b7"}
 INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
 
 def style(fig, h=None):
@@ -83,7 +89,8 @@ S["verdict"] = pd.Categorical(S["data_verdict"], ORDER, ordered=True)
 S["key"] = S["paper"].str.replace(r"\.[^.]+$", "", regex=True).str.lower()
 NAME = dict(zip(S.key, S.paper))                    # per_dataset's paper key -> file name
 N = len(S)
-n_shared = int((S.data_verdict == SHARED).sum())
+n_shared = int(S.data_verdict.str.startswith("shared own data").sum())   # open + restricted access
+n_open   = int((S.data_verdict == SHARED).sum())
 
 AREAS = {"1": "Natural sciences", "2": "Engineering & technology", "3": "Medical & health sciences",
          "4": "Agricultural & veterinary sciences", "5": "Social sciences", "6": "Humanities & the arts"}
@@ -114,9 +121,16 @@ dict(value=N, color="light")
 
 ```{python}
 #| content: valuebox
-#| title: "Share their own data"
+#| title: "Share their own data (open or restricted access)"
 #| icon: database-check
 dict(value=f"{pct(n_shared, N)}  ({n_shared})", color="primary")
+```
+
+```{python}
+#| content: valuebox
+#| title: "…openly"
+#| icon: unlock
+dict(value=f"{pct(n_open, N)}  ({n_open})", color="primary")
 ```
 
 ```{python}
@@ -128,8 +142,8 @@ dict(value=len(OWN), color="light")
 
 ```{python}
 #| content: valuebox
-#| title: "…of which openly accessible"
-#| icon: unlock
+#| title: "…of those datasets, openly accessible"
+#| icon: folder2-open
 dict(value=pct(int((OWN.openness == "open").sum()), len(OWN)), color="light")
 ```
 
@@ -222,7 +236,7 @@ ACC = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"),
        ("none", "No data found (not shared, or no data)", "#c3c2b7")]
 ACC_LABEL = {k: l for k, l, _ in ACC}
 def access(r):
-    if r.data_verdict == SHARED: return r.openness if r.openness in ("open", "restricted", "mixed") else "unknown"
+    if r.data_verdict.startswith("shared own data"): return r.openness if r.openness in ("open", "restricted", "mixed") else "unknown"
     return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly"}.get(r.data_verdict, "none")
 S["access"] = S.apply(access, axis=1)
 
@@ -323,7 +337,11 @@ data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "lic
 #| title: "How to read this"
 Markdown(f"""
 **Shares own data** = the paper itself tells the reader where the authors' own data is, and the
-identifier resolves to a dataset. **DataCite link only** = a repository's metadata points to the
+identifier resolves to a dataset. It is split by access: **open**, or **restricted access**
+(deposited with a DOI and metadata, but access on conditions, e.g. personal data; a paper with some
+open and some restricted datasets is shown as restricted). Restricted data count as shared ("as open
+as possible, as closed as necessary"); data "available on request" without a deposit do not.
+**DataCite link only** = a repository's metadata points to the
 paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
 
 **Field**: the SSIF area is the first digit of the paper's Swepub codes. A paper with codes in two

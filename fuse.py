@@ -69,11 +69,17 @@ def _disagreement(c):
 
 REG_ONLY_VERDICT = "no data in paper; dataset linked via DataCite"
 
-def _summary_label(own, likely, reused, reg_only=()):
+SHARED_ACCESS = {"open": "open", "restricted": "restricted access", "mixed": "restricted access",
+                 "unknown": "access unknown"}
+
+def _summary_label(own, likely, reused, reg_only=(), openness=""):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
-    DataCite-only links never count as sharing; they only replace a bare 'no data found'."""
-    if own:      return "shared own data"
+    DataCite-only links never count as sharing; they only replace a bare 'no data found'.
+    Shared data with restricted access (deposited, access on conditions -- e.g. personal data) still
+    counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
+    'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed."""
+    if own:      return f"shared own data ({SHARED_ACCESS.get(openness, 'access unknown')})"
     if likely:   return "declared, unverifiable"
     if reused:   return "reuses data only"
     if reg_only: return REG_ONLY_VERDICT
@@ -129,7 +135,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "paper":         pm.get("file") or paper,
         "doi":           _paper_doi_cols(pm)["dv_paper_doi"],
         "year":          pm.get("year", ""),
-        "data_verdict":  _summary_label(own, likely, reused, reg_only),
+        "data_verdict":  _summary_label(own, likely, reused, reg_only,
+                                        openness=_own_openness(own_open, own_restr, unknown)),
         "openness":      _own_openness(own_open, own_restr, unknown),
         "datasets":      _dataset_cell(confirmed, likely),
         "linked_via_datacite_not_in_paper": "; ".join(f"{c.get('provenance') or '?'}: {c.get('repository') or 'DataCite'}:"

@@ -124,7 +124,13 @@ breadcrumbs — just the answer). Columns:
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections |
 
 `data_verdict`, in priority order:
-- **`shared own data`** — the paper points to its own data.
+- **`shared own data (open)`** — the paper points to its own data, and DataCite says it is open.
+- **`shared own data (restricted access)`** — the paper points to its own data, deposited with a DOI
+  and metadata but with access on conditions (e.g. personal data); also used when some of the
+  paper's datasets are open and some restricted (`openness` = `mixed`). **Counts as shared**
+  ("as open as possible, as closed as necessary"), but is never reported as open. Data "available on
+  request" without a deposit do not count.
+- **`shared own data (access unknown)`** — no access information in the metadata.
 - **`declared, unverifiable`** — stated in the data-availability statement but the id doesn't resolve
   (a dead dataset DOI is itself a FAIR red flag).
 - **`reuses data only`**
