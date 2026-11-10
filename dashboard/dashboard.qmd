@@ -347,71 +347,6 @@ data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "lic
                                  .assign(publishers=lambda d: d.publishers.str.replace("<br>", "; ")))
 ```
 
-## Row {height=560px}
-
-### Column {.tabset}
-
-```{python}
-#| title: "Data availability statement, by data verdict"
-# has_das = found by pattern search (heading) or by the LLM; both are in summary.csv
-DASL = {"yes": "Has a data availability statement", "no": "No data availability statement"}
-dv = S.groupby(["has_das", "verdict"], observed=False).size().unstack(fill_value=0).reindex(["no", "yes"]).fillna(0)
-fig = go.Figure()
-for v in ORDER:
-    if v in dv and dv[v].sum():
-        _ = fig.add_bar(y=[f"{DASL[k]} ({int(dv.loc[k].sum())})" for k in dv.index], x=dv[v], orientation="h",
-                        name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
-                        hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
-_ = fig.update_layout(barmode="stack",
-                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
-                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
-                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
-                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
-_ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
-display(fig)
-how("Does the paper have a <b>data availability statement</b> (a section that says where the data are, "
-    "e.g. “Data availability”, “Data accessibility”, “Availability of data and materials”)? Found by "
-    "pattern search on the heading, or by the LLM. Colours as in the charts above: do papers with a "
-    "statement share their data more often?<br>A statement is not the same as shared data: it can also say "
-    "“on request” or “not applicable”.")
-```
-
-```{python}
-#| title: "Data"
-data_tab(S[["paper", "journal", "has_das", "das_pattern", "das_llm", "data_verdict"]]
-           .rename(columns={"das_pattern": "heading found (pattern search)", "das_llm": "LLM says statement"})
-           .sort_values(["has_das", "paper"]), "das",
-         counts=dv.loc[:, dv.sum() > 0].rename(columns=LABEL).rename(index=DASL).rename_axis("statement").reset_index())
-```
-
-### Column {.tabset}
-
-```{python}
-#| title: "Journals: papers with and without a data availability statement"
-JR = S.assign(journal=S.journal.replace("", "(no journal: report, blog …)"))
-jt = JR.groupby(["journal", "has_das"]).size().unstack(fill_value=0).reindex(columns=["yes", "no"], fill_value=0)
-jt = jt.assign(n=jt.sum(axis=1)).sort_values(["n", "yes"]).tail(25)       # the 25 biggest journals
-fig = go.Figure()
-for k, col in [("yes", COLOR[SHARED]), ("no", COLOR[NONE])]:
-    _ = fig.add_bar(y=jt.index, x=jt[k], orientation="h", name=DASL[k],
-                    marker=dict(color=col, line=dict(color=SURF, width=2)),
-                    hovertemplate="%{y}: %{x} paper(s)<extra>" + DASL[k] + "</extra>")
-_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15),
-                                                             yaxis=dict(tickfont=dict(size=11)))
-display(fig)
-how("Each bar is one journal: papers with a data availability statement (blue) and without (gray). "
-    "Journal names from the paper's DOI. Shows the 25 journals with the most papers.<br>With a small "
-    "corpus most journals have one paper, so this says little yet. It becomes useful with many papers "
-    "per journal.")
-```
-
-```{python}
-#| title: "Data"
-data_tab(JR[["journal", "paper", "has_das", "data_verdict"]].sort_values(["journal", "paper"]), "journals",
-         counts=jt.rename(columns={"yes": "with statement", "no": "without", "n": "papers"})
-                  .iloc[::-1].reset_index())
-```
-
 ## Row {height=440px}
 
 ### Column {.tabset}
@@ -478,6 +413,73 @@ if HAVE_NORM:
                      counts=pd.read_csv(os.path.join(OUT, "field_norm.csv"), encoding="utf-8-sig", dtype=str)))
 else:
     display(Markdown("No `field_norm_datasets.csv` yet."))
+```
+
+# Journals {scrolling="true"}
+
+## Row {height=560px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Data availability statement, by data verdict"
+# has_das = found by pattern search (heading) or by the LLM; both are in summary.csv
+DASL = {"yes": "Has a data availability statement", "no": "No data availability statement"}
+dv = S.groupby(["has_das", "verdict"], observed=False).size().unstack(fill_value=0).reindex(["no", "yes"]).fillna(0)
+fig = go.Figure()
+for v in ORDER:
+    if v in dv and dv[v].sum():
+        _ = fig.add_bar(y=[f"{DASL[k]} ({int(dv.loc[k].sum())})" for k in dv.index], x=dv[v], orientation="h",
+                        name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
+                        hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
+_ = fig.update_layout(barmode="stack",
+                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
+                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
+                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
+                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
+display(fig)
+how("Does the paper have a <b>data availability statement</b> (a section that says where the data are, "
+    "e.g. “Data availability”, “Data accessibility”, “Availability of data and materials”)? Found by "
+    "pattern search on the heading, or by the LLM. Colours as on the Overview page: do papers with a "
+    "statement share their data more often?<br>A statement is not the same as shared data: it can also say "
+    "“on request” or “not applicable”.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(S[["paper", "journal", "has_das", "das_pattern", "das_llm", "data_verdict"]]
+           .rename(columns={"das_pattern": "heading found (pattern search)", "das_llm": "LLM says statement"})
+           .sort_values(["has_das", "paper"]), "das",
+         counts=dv.loc[:, dv.sum() > 0].rename(columns=LABEL).rename(index=DASL).rename_axis("statement").reset_index())
+```
+
+### Column {.tabset}
+
+```{python}
+#| title: "Journals: papers with and without a data availability statement"
+JR = S.assign(journal=S.journal.replace("", "(no journal: report, blog …)"))
+jt = JR.groupby(["journal", "has_das"]).size().unstack(fill_value=0).reindex(columns=["yes", "no"], fill_value=0)
+jt = jt.assign(n=jt.sum(axis=1)).sort_values(["n", "yes"]).tail(25)       # the 25 biggest journals
+fig = go.Figure()
+for k, col in [("yes", COLOR[SHARED]), ("no", COLOR[NONE])]:
+    _ = fig.add_bar(y=jt.index, x=jt[k], orientation="h", name=DASL[k],
+                    marker=dict(color=col, line=dict(color=SURF, width=2)),
+                    hovertemplate="%{y}: %{x} paper(s)<extra>" + DASL[k] + "</extra>")
+_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15),
+                                                             yaxis=dict(tickfont=dict(size=11)))
+display(fig)
+how("Each bar is one journal: papers with a data availability statement (blue) and without (gray). "
+    "Journal names from the paper's DOI. Shows the 25 journals with the most papers.<br>With a small "
+    "corpus most journals have one paper, so this says little yet. It becomes useful with many papers "
+    "per journal.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(JR[["journal", "paper", "has_das", "data_verdict"]].sort_values(["journal", "paper"]), "journals",
+         counts=jt.rename(columns={"yes": "with statement", "no": "without", "n": "papers"})
+                  .iloc[::-1].reset_index())
 ```
 
 # Tool check {scrolling="true"}
