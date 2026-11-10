@@ -57,6 +57,7 @@ format:
         .dv-pop { max-width: 440px; font-size: .85rem; }
         .dv-pop ul { padding-left: 1.1rem; margin: .3rem 0 0; }
         .bslib-value-box .dv-help-foot { position: absolute; bottom: 2px; right: 8px; padding: 0; z-index: 5; }
+        .bslib-value-box.bg-primary .dv-help-link, .bslib-value-box.bg-primary .dv-help-link:hover { color: #fff; }
         /* six value boxes in a row make each < 300px wide, where bslib stacks the icon above the text and
            the row's fixed height crops it: keep icon left, text right, down to 180px */
         @container bslib-value-box (max-width: 300px) and (min-width: 180px) {
@@ -288,9 +289,23 @@ for r in rows_y:
     _ = fig.add_annotation(x=tot[r], y=r, text=f"{tot[r]}  ({pct(tot[r], NB)})", showarrow=False,
                            xanchor="left", xshift=6, font=dict(color=INK2))
 _ = style(fig).update_layout(barmode="stack", showlegend=False,
-                             xaxis=dict(visible=False, range=[0, max(tot.values()) * 1.35]),
+                             xaxis=dict(visible=False, range=[0, max(tot.values()) * 1.5]),
                              yaxis=dict(categoryorder="array", categoryarray=rows_y))
+if n_nogen:   # say on the chart itself that the base is smaller than all papers
+    _ = fig.add_annotation(xref="paper", yref="paper", x=0, y=-0.08, xanchor="left", yanchor="top",
+                           showarrow=False, font=dict(size=12, color=INK2),
+                           text=f"Percent of {NB} papers. Not included: {n_nogen} paper{'s' if n_nogen > 1 else ''} "
+                                f"saying {'they have' if n_nogen > 1 else 'it has'} no data of {'their' if n_nogen > 1 else 'its'} own.")
+    _ = fig.update_layout(margin=dict(b=40))
 display(fig)
+# value-box hover for the two sharing shares: same base as the charts
+display(how(f"Percent of the {NB} papers that may have data of their own. "
+            + (f"Not included: {n_nogen} paper{'s' if n_nogen > 1 else ''} that say{'' if n_nogen > 1 else 's'} "
+               "no data were generated (nothing to share). " if n_nogen else "")
+            + "<b>Shares own data</b>: the paper says where the authors' own data are, and the link works. "
+              "Open and restricted access (e.g. personal data) both count.", card="Share their own data"))
+display(how(f"Percent of the {NB} papers that may have data of their own. <b>Openly</b>: the data can be "
+            "downloaded directly, without asking.", card="…openly"))
 how("One result per paper:<ul>"
     "<li><b>Shares own data</b>: the paper points to the authors' own data and the link works. One bar: "
     "dark blue = open, light blue = restricted access (e.g. personal data). Both count as shared.</li>"
