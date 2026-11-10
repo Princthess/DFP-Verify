@@ -141,6 +141,9 @@ breadcrumbs — just the answer). Columns:
 - **`shared own data (access unknown)`** — no access information in the metadata.
 - **`declared, unverifiable`** — stated in the data-availability statement but the id doesn't resolve
   (a dead dataset DOI is itself a FAIR red flag).
+- **`own data in article / supplement only (not deposited)`** — the paper deposits nothing but says its
+  data are in the article or its supplementary files (`supplement_signal`). **Not counted as shared**
+  (no DOI of its own, often PDF); ranks above "on request" because the reader can download the files.
 - **`own data on request only (not shared)`** — the paper deposits nothing but says its data are
   available on request (`on_request_signal`). **Not counted as shared.**
 - **`reuses data only`**

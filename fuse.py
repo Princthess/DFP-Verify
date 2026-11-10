@@ -70,11 +70,12 @@ def _disagreement(c):
 REG_ONLY_VERDICT = "no data in paper; dataset linked via DataCite"
 NO_DATA_STATED = "no data generated (paper says so)"
 ON_REQUEST = "own data on request only (not shared)"
+IN_SUPPLEMENT = "own data in article / supplement only (not deposited)"
 
 SHARED_ACCESS = {"open": "open", "restricted": "restricted access", "mixed": "restricted access",
                  "unknown": "access unknown"}
 
-def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on_request=""):
+def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on_request="", supplement=""):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
     DataCite-only links never count as sharing; they only replace a bare 'no data found'.
@@ -84,9 +85,12 @@ def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on
     shared, but about their OWN data, so it ranks above reuse; shared own data and a declared id win.
     Shared data with restricted access (deposited, access on conditions -- e.g. personal data) still
     counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
-    'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed."""
+    'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed.
+    "Data are in the article / supplement" (nodata.supplement) is the same kind of case -- own data, not
+    deposited -- but the reader can download them, so it ranks just above "on request"."""
     if own:      return f"shared own data ({SHARED_ACCESS.get(openness, 'access unknown')})"
     if likely:   return "declared, unverifiable"
+    if supplement: return IN_SUPPLEMENT
     if on_request: return ON_REQUEST
     if reused:   return "reuses data only"
     if reg_only: return REG_ONLY_VERDICT
@@ -149,7 +153,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "year":          pm.get("year", ""),
         "data_verdict":  _summary_label(own, likely, reused, reg_only,
                                         openness=_own_openness(own_open, own_restr, unknown), no_data=nd,
-                                        on_request=pm.get("on_request_signal", "")),
+                                        on_request=pm.get("on_request_signal", ""),
+                                        supplement=pm.get("supplement_signal", "")),
         "openness":      _own_openness(own_open, own_restr, unknown),
         "datasets":      _dataset_cell(confirmed, likely),
         "linked_via_datacite_not_in_paper": "; ".join(f"{c.get('provenance') or '?'}: {c.get('repository') or 'DataCite'}:"

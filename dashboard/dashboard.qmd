@@ -95,13 +95,15 @@ REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "
                               "declared, unverifiable", "no data found")
 NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words
 ONREQ  = "own data on request only (not shared)"  # nodata.on_request: data exist, not deposited
-ORDER  = [SHARED, SH_RESTR, SH_UNK, ONREQ, REGONLY, REUSE, DECL, NOGEN, NONE]
+INSUPP = "own data in article / supplement only (not deposited)"  # nodata.supplement: data in the SI
+ORDER  = [SHARED, SH_RESTR, SH_UNK, INSUPP, ONREQ, REGONLY, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
-          SH_UNK: "Shares own data: access unknown", ONREQ: "Own data on request only (not shared)", REGONLY: "DataCite link only (not counted)",
+          SH_UNK: "Shares own data: access unknown", INSUPP: "Own data in article / supplement only (not deposited)",
+          ONREQ: "Own data on request only (not shared)", REGONLY: "DataCite link only (not counted)",
           REUSE: "Reuses data only", DECL: "Declared, not verifiable",
           NOGEN: "No data generated (paper says so)", NONE: "No data found (not shared, or no data)"}
 # the two "no data" categories share the gray family; lighter = the paper explains it has none
-COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", ONREQ: "#6250d6", REGONLY: "#eb6834", REUSE: "#1baf7a",
+COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", ONREQ: "#6250d6", INSUPP: "#c4559f", REGONLY: "#eb6834", REUSE: "#1baf7a",
           DECL: "#eda100", NOGEN: "#dedcd3", NONE: "#b4b2a8"}
 INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
 
