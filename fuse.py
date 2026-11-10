@@ -176,6 +176,10 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         # "data are in the article / supplement": monitored, not counted as shared (not deposited).
         # Pattern search + the LLM's own supplementary flag, side by side.
         "supplement_signal": pm.get("supplement_signal", ""),
+        # "we used other people's data": pattern search + the LLM's names of data it says are not the
+        # authors' own. Not verified, not part of the verdict (reuses_data = verified reuse only).
+        "reuse_signal":      pm.get("reuse_signal", ""),
+        "reuse_llm":         pm.get("reuse_llm", ""),
         "supplement_llm":    pm.get("supplement_llm", ""),
         "note":         "; ".join(notes),
     }
@@ -286,7 +290,7 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
                                           "datasets", "linked_via_datacite_not_in_paper",
                                           "reuses_data", "field", "field_source", "work_type", "no_data_signal",
                                           "no_data_llm", "on_request_signal", "supplement_signal",
-                                          "supplement_llm", "note"])
+                                          "supplement_llm", "reuse_signal", "reuse_llm", "note"])
         w.writeheader(); w.writerows(summary_rows)
     with open(os.path.join(out_dir, "per_dataset.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "identifier", "kind", "source", "registry", "found_in",

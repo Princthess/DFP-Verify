@@ -66,6 +66,8 @@ format:
         .dv-help-foot { flex: none !important; padding: 2px 12px 6px; font-size: .8rem; }
         .dv-help-link { color: #2a78d6; cursor: help; border-bottom: 1px dotted #2a78d6; }
         .dv-pop { max-width: 440px; font-size: .85rem; }
+        .card:has(.dv-context) .card-body { padding: 10px 14px !important; overflow: hidden !important; justify-content: center; }
+        .dv-context { font-size: .95rem; color: #52514e; padding: 0 4px; display: block !important; flex: none !important; min-height: 1.6em; line-height: 1.6; }
         /* Count / Percent: over the chart's top margin, top-left (Plotly's modebar is top-right) */
         .tab-pane:has(.dv-norm), .card-body:has(.dv-norm) { position: relative; }
         .dv-norm { position: absolute !important; top: 4px; left: 12px; z-index: 3; display: flex !important; flex-direction: row !important; gap: 4px; width: auto !important; height: auto !important; }
@@ -207,21 +209,36 @@ OWN["paper"] = OWN.paper.map(lambda k: NAME.get(k, k))
 
 # Overview {scrolling="true"}
 
-## Row {height=160px}
+## Row {height=56px}
 
 ```{python}
-#| content: valuebox
-#| title: "Papers analysed"
-#| icon: file-earmark-text
-dict(value=N, color="light")
+# Context, not results: how much was analysed. All percentages below are of the NB papers that may have
+# data of their own (papers saying they generated no data are left out).
+n_reuse = int(((S.reuse_signal != "") | (S.reuse_llm != "")).sum()) if "reuse_signal" in S else 0
+display(HTML(f'<div class="dv-context"><b>{N}</b> papers analysed'
+             + (f' · <b>{NB}</b> may have data of their own ({n_nogen} say{"s" if n_nogen == 1 else ""} no data '
+                f'were generated)' if n_nogen else "")
+             + f' · <b>{len(OWN)}</b> own datasets found. Percentages below are of the {NB} papers.</div>'))
+# value-box hovers (value boxes can't hold extra output; placed by title)
+display(how("<b>Counted as sharing.</b> The paper says where the authors' own data are, and the link works. "
+            "Open and restricted access (e.g. personal data) both count.", card="Share their own data"))
+display(how("<b>Counted as sharing.</b> Of the papers above: the data can be downloaded directly, without "
+            "asking.", card="…openly"))
+display(how("<b>Not counted as sharing</b> (a signal). The paper says its data are in the article itself or in "
+            "its supplementary files, e.g. “All data are included in this article and its supplementary "
+            "information”. Supplements have no DOI of their own and are often PDF files. A paper that only says "
+            "“supplementary material is available online” is not counted: that could be figures, not data. "
+            "Counts every paper that says it, also papers that share other data.", card="Say data are in the article"))
+display(how("<b>Not counted as sharing</b> (a signal). The paper says its data can be asked for, but they "
+            "are not stored anywhere. Counts every paper that says it, also papers that share other data.",
+            card="Say data are available on request"))
+display(how("<b>Not part of the verdict</b> (a signal). The paper uses data from someone else: found by "
+            "pattern search (“we use data from two studies”, “publicly available dataset”) <b>or</b> by the "
+            "LLM (data it says the authors did not create; software left out). Not verified: most reused "
+            "data are cited without an id. Both are in the Papers table.", card="Say they reuse"))
 ```
 
-```{python}
-#| content: valuebox
-#| title: "Own datasets cited in the papers"
-#| icon: box-seam
-dict(value=len(OWN), color="light")
-```
+## Row {height=150px}
 
 ```{python}
 #| content: valuebox
@@ -239,18 +256,23 @@ dict(value=f"{pct(n_open, NB)}  ({n_open})", color="primary")
 
 ```{python}
 #| content: valuebox
-#| title: "Say data are “available on request”"
+#| title: "Say data are in the article or its supplement"
+#| icon: paperclip
+dict(value=f"{pct(n_supp, NB)}  ({n_supp})", color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Say data are available on request"
 #| icon: envelope
-# every paper with the statement, also those that deposit other data (on_request_signal)
 dict(value=f"{pct(n_req, NB)}  ({n_req})", color="light")
 ```
 
 ```{python}
 #| content: valuebox
-#| title: "Say data are in the article or its supplement"
-#| icon: paperclip
-# pattern search (supplement_signal); not counted as shared -- not deposited, no own DOI
-dict(value=f"{pct(n_supp, NB)}  ({n_supp})", color="light")
+#| title: "Say they reuse others' data"
+#| icon: arrow-repeat
+dict(value=f"{pct(n_reuse, NB)}  ({n_reuse})", color="light")
 ```
 
 ## Row {height=440px}
@@ -268,13 +290,6 @@ for v in ORDER:
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"))
 _ = style(fig).update_layout(margin=dict(t=36))
 display(NORM_BTNS); display(fig)
-# value-box hover (value boxes can't hold extra output; placed by title)
-display(how("The paper says its data are in the article itself or in its supplementary files, for example "
-            "“All data are included in this article and its supplementary information”.<br>"
-            "<b>Not counted as shared</b>: supplements have no DOI of their own and are often PDF files. "
-            "Journals advise a data repository instead.<br>A paper that only says “supplementary material is "
-            "available online” is not counted here: that could be figures, not data.",
-            card="Say data are in the article"))
 how("Each bar is the papers published that year, coloured by result. <b>Percent</b> shows shares "
     "instead of numbers.<br><b>Shares own data</b>: the paper says where the authors' own data is, and "
     "the link works. Open and restricted access (e.g. personal data) both count.<br>"
@@ -317,14 +332,6 @@ if n_nogen:   # say on the chart itself that the base is smaller than all papers
                                 f"saying {'they have' if n_nogen > 1 else 'it has'} no data of {'their' if n_nogen > 1 else 'its'} own.")
     _ = fig.update_layout(margin=dict(b=40))
 display(fig)
-# value-box hover for the two sharing shares: same base as the charts
-display(how(f"Percent of the {NB} papers that may have data of their own. "
-            + (f"Not included: {n_nogen} paper{'s' if n_nogen > 1 else ''} that say{'' if n_nogen > 1 else 's'} "
-               "no data were generated (nothing to share). " if n_nogen else "")
-            + "<b>Shares own data</b>: the paper says where the authors' own data are, and the link works. "
-              "Open and restricted access (e.g. personal data) both count.", card="Share their own data"))
-display(how(f"Percent of the {NB} papers that may have data of their own. <b>Openly</b>: the data can be "
-            "downloaded directly, without asking.", card="…openly"))
 how("One result per paper:<ul>"
     "<li><b>Shares own data</b>: the paper points to the authors' own data and the link works. One bar: "
     "dark blue = open, light blue = restricted access (e.g. personal data). Both count as shared.</li>"
@@ -550,6 +557,76 @@ how("Where the authors' own datasets are stored: the repository that registered 
 #| title: "Data"
 data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "license"]].sort_values(["repository", "paper"]),
          "repositories", counts=rt.rename(columns={**ACCL, "n": "datasets"}).iloc[::-1].reset_index())
+```
+
+## Row {height=400px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Licences of own datasets"
+# DataCite rightsList (or the DOI's CSL licence). Versions dropped: "cc-by-4.0" -> "CC BY".
+def lic_family(s):
+    s = (s or "").strip().lower()
+    if not s:                      return "No licence stated"
+    if "cc0" in s or "publicdomain" in s: return "CC0 (public domain)"
+    m = re.search(r"cc[-_ ]?(by(?:[-_ ](?:nc|nd|sa))*)", s) or re.search(r"/licenses/(by(?:-(?:nc|nd|sa))*)/", s)
+    if m:                          return "CC " + m.group(1).upper().replace("_", "-").replace(" ", "-")
+    if re.search(r"gpl|mit|apache|bsd", s): return "Software licence (" + s.split("-")[0].upper() + ")"
+    return "Other"
+LIC = OWN.assign(licence=OWN.license.map(lic_family))
+lt = LIC.licence.value_counts().sort_values()
+fig = go.Figure(go.Bar(y=lt.index, x=lt.values, orientation="h", marker_color=SLATE[0],
+                       text=[f"{n}  ({pct(n, len(LIC))})" for n in lt.values], textposition="outside",
+                       textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, lt.max() * 1.4]), showlegend=False)
+display(fig)
+how("The licence the repository records for each of the authors' own datasets: the terms for reusing "
+    "them (the “R” in FAIR). <b>CC BY</b> / <b>CC0</b> allow any reuse; <b>NC</b> = non-commercial only, "
+    "<b>ND</b> = no changes. <b>No licence stated</b>: legally unclear whether the data may be reused.<br>"
+    "Licence is separate from access: restricted-access data can have a licence, open data can lack one.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(LIC[["paper", "identifier", "repository", "license", "licence", "openness"]].sort_values(["licence", "paper"]),
+         "licences", counts=lt.iloc[::-1].rename_axis("licence").reset_index(name="datasets"))
+```
+
+### Column {.tabset}
+
+```{python}
+#| title: "Does the dataset's record link back to the paper?"
+# Traceability: DataCite's record of the dataset names the paper (found by the reverse lookup: registry
+# 'linked' / 'repaired' / 'linked (landing page in text)'). Only DOI datasets -- archives without DOIs
+# (ENA, PRIDE) have no such field here.
+TR = OWN[OWN.kind == "doi"].assign(repository=lambda d: d.repository.replace("", "(unknown)"),
+                                   back=lambda d: d.registry.str.startswith(("linked", "repaired")).map(
+                                       {True: "yes", False: "no"}))
+BACKL = {"yes": "Record links to the paper", "no": "No link to the paper"}
+bt = TR.groupby(["repository", "back"]).size().unstack(fill_value=0).reindex(columns=["yes", "no"], fill_value=0)
+bt = bt.assign(n=bt.sum(axis=1)).sort_values("n")
+fig = go.Figure()
+for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
+    _ = fig.add_bar(y=bt.index, x=bt[k], orientation="h", name=BACKL[k],
+                    marker=dict(color=col, line=dict(color=SURF, width=2)),
+                    hovertemplate="%{y}: %{x} dataset(s)<extra>" + BACKL[k] + "</extra>")
+_ = style(fig).update_layout(barmode="stack", legend=dict(orientation="h", y=-0.15))
+display(fig)
+n_back = int((TR.back == "yes").sum())
+how(f"The paper points to the dataset. Does the dataset's record in DataCite also point back to the paper? "
+    f"<b>This run:</b> {n_back} of {len(TR)} own datasets with a DOI.<br>A missing link is a metadata gap in "
+    "the repository record, not the authors' fault in the paper: it makes the data harder to find from the "
+    "paper's side (and for tools such as RoAgg). Useful for repositories and data support to follow up.<br>"
+    "Only datasets with a DOI; archives without DOIs (e.g. ENA, PRIDE) are left out.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(TR[["paper", "identifier", "repository", "back", "registry"]].rename(columns={"back": "links back"})
+           .sort_values(["repository", "paper"]), "backlinks",
+         counts=bt.rename(columns={**BACKL, "n": "datasets"}).iloc[::-1].reset_index())
 ```
 
 # Tool check {scrolling="true"}

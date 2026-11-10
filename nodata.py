@@ -117,6 +117,43 @@ SUPPLEMENT = re.compile(
     r"\b(?:included|provided|available|found|contained|given|listed)\b[^.]{0,40}?"
     rf"\b(?:in|within|with|as\s+part\s+of)\b[^.]{{0,30}}?\b(?:{_SUPP})\b")
 
+# ---- "we used other people's data": a reuse statement ----------------------------------------------------
+# Reuse is only counted in the verdict when a cited dataset is verified and not the authors' own. Most
+# reuse is cited without an id (a database, a benchmark, a public data file), so this is a separate
+# signal next to the LLM's own judgement (fuse: reuse_llm). Generic phrasings, no list of databases:
+#   "publicly available data(set)", "data were obtained / retrieved / downloaded from ...",
+#   "we used data from ...", "secondary data".
+# "Data were obtained from the participants / measurements" is the authors' own collection: skipped.
+_OWN_SOURCE = (r"(?:the\s+)?(?:participants?|patients?|subjects?|respondents?|interviews?|informants?|"
+               r"experiments?|measurements?|simulations?|questionnaires?|surveys?\s+we|our\b|this\s+study|"
+               r"field\s+(?:work|sites?)|samples?|animals?|pigs?|mice|rats?)")
+REUSE = re.compile(
+    r"(?i)(?<!\bour\s)(?<!\bthis\s)\b(?:publicly|openly|freely)\s+available\s+(?:data(?:\s*sets?)?|datasets?|"
+    r"databases?|benchmarks?)\b"
+    r"|\bdata(?:\s*sets?)?\s+(?:were|was|are|is|have\s+been)\s+(?:obtained|retrieved|downloaded|sourced|"
+    rf"extracted|acquired|taken)\s+from\s+(?!{_OWN_SOURCE})"
+    # "we use data from two studies", "using data originally reported in a study by ...", "re-analysed the
+    # dataset of ..."
+    r"|\b(?:use[sd]?|using|analy[sz](?:ed|ing)|re-?analy[sz](?:ed|ing)|re-?us(?:e[sd]?|ing))\s+(?:the\s+)?"
+    r"(?:data(?:\s*sets?)?|datasets?)\s+(?:originally\s+)?"
+    rf"(?:(?:from|of)\s+(?!{_OWN_SOURCE})|reported|published|provided\s+by|made\s+available\s+by|collected\s+by)"
+    r"|\bsecondary\s+(?:data|analys[ie]s)\b")
+
+def reuse(text):
+    """The sentence where the paper says it uses data from elsewhere, or ''."""
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")
+    flat = re.sub(r"\s+", " ", flat)
+    for m in REUSE.finditer(flat):
+        dot = flat.rfind(". ", max(0, m.start() - 200), m.start())
+        s = dot + 2 if dot >= 0 else m.start()
+        cut = [x.end() for x in re.finditer(r"[a-z]- (?=[A-Z])", flat[s:m.start()])]
+        if cut: s += cut[-1]
+        e = flat.find(".", m.end())
+        e = e + 1 if 0 <= e < m.end() + 200 else m.end() + 80
+        return flat[s:e].strip()
+    return ""
+
+
 def supplement(text):
     """The sentence where the paper says its data are in the article or its supplement, or ''."""
     flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")

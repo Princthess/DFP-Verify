@@ -66,6 +66,13 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         pmeta["no_data_signal"]    = nodata.signal(nodata.statement(text))    # "no new data were generated"
         pmeta["on_request_signal"] = nodata.signal(nodata.on_request(text))   # "available on request"
         pmeta["supplement_signal"] = nodata.signal(nodata.supplement(text))   # "data are in the supplement"
+        # reuse of other people's data: pattern search, next to the LLM's own judgement (DFP rows it says
+        # the authors did not create, software left out). A signal only -- the verdict counts verified reuse.
+        pmeta["reuse_signal"] = nodata.signal(nodata.reuse(text))
+        pmeta["reuse_llm"] = "; ".join(dict.fromkeys(
+            (r.get("name") or r.get("identifier") or "").strip() for r in dfp_by.get(p, [])
+            if str(r.get("created_by_authors", "")).strip().lower() == "false"
+            and str(r.get("is_code", "")).strip().lower() != "true"))
         # does the paper have a data-availability statement? pattern search (heading as written) next to
         # the LLM's own das_found, compared like the dataset searches
         pmeta["das_pattern"] = sections.das_heading(text)
