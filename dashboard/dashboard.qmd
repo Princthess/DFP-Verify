@@ -414,6 +414,10 @@ for _, r in D[D.registry.str.startswith("repaired")].iterrows():
 for _, r in D[D.status == "likely-broken-link"].iterrows():
     add(G_ID, "Declared link does not resolve", NAME.get(r.paper, r.paper), r.identifier,
         "Check by hand: typo, private/review link, or removed record")
+for _, r in D[D.status == "likely-unchecked"].iterrows():
+    add(G_ID, "Link could not be checked automatically", NAME.get(r.paper, r.paper), r.identifier,
+        "The site blocks automated checks. Open it by hand: does it work, and is it a published "
+        "record (not a private or reviewer link)?")
 for _, r in D[D.status == "likely-no-doi"].iterrows():
     add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
         "Data statement points to a site, not a record; check by hand")
@@ -543,7 +547,8 @@ display(how("Normally we can't know which datasets a paper <i>should</i> have. O
             "and Chalmers DORIS). It shows how often the searches <i>miss</i> data, not how often they report "
             "something that isn't data.", card="Self-check"))
 display(how("<b>repaired</b>: a broken dataset link that the tool fixed automatically (it matches a "
-            "registered DOI).<br><b>dead</b>: a dataset link in the paper that does not work.<br>"
+            "registered DOI).<br><b>dead</b>: a dataset link in the paper that does not work (page or record "
+            "not found).<br>"
             "<b>no id</b>: the paper mentions data, but gives no link.", card="Broken ids"))
 display(how("Rows where the LLM and the other checks give different answers: is it a dataset (DOI "
             "registry), is it the authors' own (ORCID and author names), is it open or restricted (DataCite "

@@ -26,6 +26,8 @@ Candidates are graded by how much the detectors agree:
 1. **detect** (`detect_union.py`) — DFP's ids ∪ regex (DOIs, Swedish SND / SciLifeLab / DORIS
    prefixes, accessions, Zenodo / GitHub / OSF / data-repo URLs, split-line repair). Max recall.
 2. **verify** (`verify.py`) — DOI → DataCite type-check, accession → archive API, URL → resolve.
+   Only 404/410 count as a dead link; bot protection (e.g. figshare's AWS WAF challenge, HTTP 202) or
+   no answer gives `unchecked link` (status `likely-unchecked`), to open by hand.
    Deterministic, disk-cached.
 3. **registry links** (`registry_lookup.py`) — the reverse direction: which datasets does DataCite
    tie to *this paper*? The paper DOI is first checked (its record's title must match the first page;

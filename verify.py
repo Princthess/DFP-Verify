@@ -4,7 +4,9 @@ STAGE 2 - VERIFY (max precision).
 Confirms each candidate identifier against authoritative registries, deterministically:
   - DOI       -> doi.org content negotiation (DataCite/Crossref): is it a dataset/software?
   - accession -> the archive's API (GEO/SRA/PRIDE/ENA/BioStudies): does the record exist?
-  - code/osf/url -> HTTP resolve check (link lives; weak signal).
+  - code/osf/url -> HTTP resolve check (link lives; weak signal). Only 404/410 count as dead; bot
+    protection (AWS WAF / Cloudflare challenges, 403/429) or no answer -> "unchecked link", to check
+    by hand -- a browser often opens these fine.
 
 Results are cached to disk (.verify_cache.json) so re-runs are instant.
 
@@ -18,14 +20,24 @@ UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL',
 DATA_TYPES = {"dataset", "software", "collection"}
 S = requests.Session(); S.headers.update(UA)
 
+# Answers that say "a bot check / rate limit stopped us", not "this page doesn't exist": 202 is AWS WAF's
+# JavaScript challenge (figshare, Harvard Dataverse), 403/429/503 are blocks or limits. Only 404/410
+# mean the link is dead.
+BLOCKED = (202, 401, 403, 429, 503)
+DEAD = (404, 410)
+BOT_HEADERS = ("x-amzn-waf-action", "cf-mitigated")       # AWS WAF / Cloudflare challenge markers
+
 def _http_status(url, head=True):
+    """HTTP status, or 'blocked' (bot protection) / 'ERR' (no answer)."""
     try:
-        r = S.request("HEAD" if head else "GET", url, timeout=10, allow_redirects=True, stream=True)
-        if r.status_code in (403, 405, 501) and head:
-            return _http_status(url, head=False)
+        r = S.request("HEAD" if head else "GET", url, timeout=15, allow_redirects=True, stream=True)
+        if head and (r.status_code in (403, 405, 501) or r.status_code in BLOCKED):
+            return _http_status(url, head=False)            # some sites only answer GET
+        if any(h in r.headers for h in BOT_HEADERS):
+            return "blocked"
         return r.status_code
     except Exception:
-        return "ERR"
+        return _http_status(url, head=False) if head else "ERR"
 
 def _check_doi(doi):
     try:
@@ -69,7 +81,11 @@ def _verify_one(ident, kind):
     if kind == "doi":        return _check_doi(ident)
     if kind == "accession":  return _check_accession(ident)
     s = _http_status(ident)                                   # code / osf / url
-    return f"resolves ({kind})" if s in (200, 301, 302) else f"dead link ({s})"
+    if s in DEAD:                                  return f"dead link ({s})"
+    if s == "blocked" or s in BLOCKED:             return f"unchecked link (site blocks automated checks, {s})"
+    if s == "ERR":                                 return "unchecked link (no answer)"
+    if isinstance(s, int) and 200 <= s < 400:      return f"resolves ({kind})"
+    return f"unchecked link (HTTP {s})"
 
 def verify_candidates(cands, cache_path=".verify_cache.json", progress=True):
     cache = {}
