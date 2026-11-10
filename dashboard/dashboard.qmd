@@ -20,7 +20,44 @@ format:
         }
         window.addEventListener('load', function () { setTimeout(dvRedraw, 200); });
         document.addEventListener('shown.bs.tab', function () { setTimeout(dvRedraw, 50); });
+
+        // "How to read" hovers: each chart cell writes a hidden <div class="dv-help"> (Python how()).
+        // Move it into a footer line of its card (or of the card named in data-for, e.g. a value box)
+        // and show the text as a popover on hover / keyboard focus.
+        function dvHelp() {
+          document.querySelectorAll('.dv-help').forEach(function (h) {
+            var html = h.innerHTML, target = h.dataset.for, card = null;
+            if (target) {
+              card = Array.from(document.querySelectorAll('.bslib-value-box, .card')).find(function (c) {
+                var t = c.querySelector('.value-box-title, .card-header, .card-title');
+                return t && t.textContent.indexOf(target) >= 0;
+              });
+            } else { card = h.closest('.card'); }
+            var out = h.closest('.cell-output-display') || h.parentElement;
+            h.remove();
+            if (out && !out.textContent.trim() && !out.querySelector('.js-plotly-plot, table, img, svg')) out.remove();
+            if (!card) return;
+            var foot = document.createElement('div'); foot.className = 'dv-help-foot';
+            var a = document.createElement('span'); a.className = 'dv-help-link'; a.tabIndex = 0;
+            a.setAttribute('role', 'button'); a.innerHTML = '&#9432; How to read';
+            foot.appendChild(a); card.appendChild(foot);
+            if (window.bootstrap && bootstrap.Popover) {
+              new bootstrap.Popover(a, {content: html, html: true, trigger: 'hover focus', placement: 'top',
+                                        container: 'body', customClass: 'dv-pop'});
+            } else { a.title = h.textContent; }
+          });
+          window.dispatchEvent(new Event('resize'));
+        }
+        // after Quarto/bslib have built the cards (they rearrange the DOM on load)
+        window.addEventListener('load', function () { setTimeout(dvHelp, 100); });
         </script>
+        <style>
+        .dv-help-foot { flex: none !important; padding: 2px 12px 6px; font-size: .8rem; }
+        .dv-help-link { color: #2a78d6; cursor: help; border-bottom: 1px dotted #2a78d6; }
+        .dv-pop { max-width: 440px; font-size: .85rem; }
+        .dv-pop ul { padding-left: 1.1rem; margin: .3rem 0 0; }
+        .bslib-value-box .dv-help-foot { position: absolute; bottom: 2px; right: 8px; padding: 0; z-index: 5; }
+        </style>
 execute:
   echo: false
   warning: false
@@ -69,6 +106,13 @@ def style(fig, h=None):
     return fig
 
 def pct(a, b): return f"{100 * a / b:.0f}%" if b else "–"
+
+def how(html, card=None):
+    """The "How to read" hover of a chart: a hidden div that a script in the page header moves into a
+    footer line of this cell's card (or of the card whose title contains `card`, e.g. a value box).
+    Keep it short and in plain words: the readers are not all native English speakers."""
+    attr = f' data-for="{card}"' if card else ""
+    return HTML(f'<div class="dv-help" hidden{attr}>{html}</div>')
 
 def _csv_link(df, label, filename):
     """A download button with the CSV inlined as a data: URI (BOM so Excel reads UTF-8)."""
@@ -172,7 +216,11 @@ _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
                                     buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
                                              dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
 _ = style(fig).update_layout(margin=dict(t=36))
-fig
+display(fig)
+how("Each bar is the papers published that year, coloured by result. <b>Percent</b> shows shares "
+    "instead of numbers.<br><b>Shares own data</b>: the paper says where the authors' own data is, and "
+    "the link works. Open and restricted access (e.g. personal data) both count.<br>"
+    "The <b>Data</b> tab has the rows behind the chart, also as CSV.")
 ```
 
 ```{python}
@@ -193,7 +241,18 @@ fig = go.Figure(go.Bar(y=[LABEL[v] for v in vc.index], x=vc.values, orientation=
                        textfont=dict(color=INK2), cliponaxis=False,
                        hovertemplate="%{y}: %{x} paper(s)<extra></extra>"))
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, vc.max() * 1.35]), showlegend=False)
-fig
+display(fig)
+how("One result per paper:<ul>"
+    "<li><b>Shares own data</b>: the paper points to the authors' own data and the link works "
+    "(open, or restricted access).</li>"
+    "<li><b>On request only</b>: the paper says the data can be asked for, but they are not stored "
+    "anywhere. Not counted as shared.</li>"
+    "<li><b>DataCite link only</b>: a dataset's record points to the paper, but the paper does not "
+    "mention it. Not counted.</li>"
+    "<li><b>Reuses data only</b>: only other people's data.</li>"
+    "<li><b>Declared, not verifiable</b>: the paper mentions data, but the link does not work.</li>"
+    "<li><b>No data generated</b>: the paper says it has no data of its own.</li>"
+    "<li><b>No data found</b>: the rest. Not shared, or no data: the tool can't tell which.</li></ul>")
 ```
 
 ```{python}
@@ -219,7 +278,11 @@ for v in ORDER:
                     marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
                     hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
 _ = style(fig).update_layout(barmode="stack", showlegend=False)
-fig
+display(fig)
+how(f"The paper's research field in the Swedish standard <b>SSIF</b>: from the paper's record in "
+    f"Swepub, or from Swepub's automatic classifier (title + abstract) when the paper is not in Swepub. "
+    f"A paper in two fields counts in both, so the bars can add up to more than {N}.<br>"
+    f"<b>No SSIF field</b>: no DOI or no abstract. Colours as in the charts above.")
 ```
 
 ```{python}
@@ -242,7 +305,10 @@ fig = go.Figure(go.Bar(y=rp.index, x=rp.n, orientation="h", marker_color=COLOR[S
                        text=rp.n, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
                        hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra></extra>"))
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.n.max() * 1.2]), showlegend=False)
-fig
+display(fig)
+how("Where the authors' own datasets are stored: the repository that registered the dataset's DOI "
+    "(e.g. SND, Chalmers DORIS, Zenodo). Hover a bar to see the responsible institution. "
+    "Archives without DOIs (e.g. ENA) show the archive.")
 ```
 
 ```{python}
@@ -298,6 +364,12 @@ if HAVE_NORM:
     _ = style(fig).update_layout(yaxis=dict(ticksuffix="%", range=[0, 100],
                                             title=dict(text="% of datasets with restricted access")))
     display(fig)
+    display(how("Share of datasets with <b>restricted access</b> (e.g. personal data; access on "
+                "application). The rest are open.<br><b>Blue</b>: the datasets in these papers. "
+                "<b>Grey</b>: what is usual in the same repositories, in the same field (all their "
+                "datasets in DataCite; the whole repository if it has no field information). Hover a bar "
+                "to see which.<br>About datasets, not papers. Few datasets per field (k/n): read as "
+                "examples, not trends. Update with <i>python field_norm.py</i>."))
 else:
     display(Markdown("No reference yet. Run `python field_norm.py` after the pipeline (asks DataCite, a "
                      "few minutes) to write `field_norm.csv` and `field_norm_datasets.csv`, then render again."))
@@ -311,70 +383,6 @@ if HAVE_NORM:
 else:
     display(Markdown("No `field_norm_datasets.csv` yet."))
 ```
-
-### Column
-
-```{python}
-#| title: "About the repository comparison"
-Markdown("""
-Each own dataset is compared with **the other datasets in its own repository**, in the SSIF area of
-the paper that cites it. When the repository sets no field subjects, or has fewer than 20 datasets in
-that area, the whole repository is the reference (hover to see which). *Expected* = the average of
-those references, so the grey bar is what these repositories usually look like for this mix of
-datasets.
-
-Same rule on both sides, as in the rest of the dashboard: a deposited dataset has **restricted
-access** when its DataCite access right says restricted, closed or embargoed; otherwise it is
-**open** (the rest of each bar up to 100 %). Versions of one dataset count once.
-
-**Why not all of DataCite?** Only a few repositories put field subjects on datasets (figshare, the
-specimen registry DiSSCo), so an all-of-DataCite figure mostly describes them. Within one repository,
-practice is comparable: SND, for instance, has many restricted datasets (personal data), Zenodo few.
-
-**Limits:** it is about *datasets*, not the share of *papers* that share data. Accessions (ENA …)
-are not in DataCite and not compared. With few own datasets per area, the bars show *k/n*.
-
-Refresh with `python field_norm.py` (date in the Data tab, column `fetched`).
-""")
-```
-
-## Row {height=330px}
-
-```{python}
-#| title: "How to read this"
-Markdown(f"""
-**Shares own data** = the paper itself tells the reader where the authors' own data is, and the
-identifier resolves to a dataset. It is split by access: **open**, or **restricted access**
-(deposited with a DOI and metadata, but access on conditions, e.g. personal data; a paper with some
-open and some restricted datasets is shown as restricted). Restricted data count as shared ("as open
-as possible, as closed as necessary"); data "available on request" without a deposit do not.
-**DataCite link only** = a repository's metadata points to the
-paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
-
-**Field**: the SSIF area is the first digit of the paper's SSIF codes. They come from the paper's
-Swepub record, or, for papers not in Swepub, from Swepub's automatic classifier run on the title and
-abstract (`field_source` = *swepub classify*; on this corpus it agreed with the manual Swepub area
-whenever it made a suggestion). A paper with codes in two areas counts in both, so the field bars can
-add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no abstract). Colours in the field chart follow the legend of the year chart.
-
-**Results** count *papers*, so papers without data stay in the picture. *No data generated* =
-the paper itself says it has no data of its own ("no new data were generated", "data sharing not
-applicable"; pattern search, see `no_data_signal`).
-*Own data on request only* = the paper shares no data but says its data are available from the
-authors on request: the data exist but are not deposited, so they don't count as shared. The KPI
-counts every paper with such a sentence, also papers that deposit some of their data.
-*No data found* = everything else without data: not shared, or no data, which the tool can't tell apart.
-
-**Repository**: the repository that registered the DOI in DataCite (e.g. SND, Chalmers DORIS,
-SciLifeLab), not the `publisher` field, which names the responsible institution (hover to see it).
-Accessions (ENA, PRIDE …) show the archive.
-
-**Data tab** on each chart: the rows behind it, with CSV downloads of the counts and of the rows.
-Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`
-(and `field_norm.csv` for the DataCite comparison).
-""")
-```
-
 
 # Tool check {scrolling="true"}
 
@@ -507,7 +515,34 @@ for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not co
                         marker=dict(color=col, line=dict(color=SURF, width=2)),
                         hovertemplate="%{y}: %{x}<extra>" + k + "</extra>")
 _ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.2))
-fig
+display(fig)
+display(how("How each dataset was found:<ul>"
+            "<li><b>DFP</b>: the AI detector that reads the paper.</li>"
+            "<li><b>Pattern search</b>: DFP-Verify's rule-based search of the same text, for DOIs and archive "
+            "numbers (e.g. PRJEB84056).</li>"
+            "<li><b>DataCite</b>: the other way round. The dataset's record says it belongs to the paper. It "
+            "counts only if the paper also mentions the dataset (e.g. by web link).</li></ul>"
+            "The <b>Data</b> tab has the rows behind the chart, also as CSV."))
+# value boxes can't hold extra text, so their hovers are written here and placed by title (data-for)
+n_dfp = int(C.found_by.str.contains("DFP").sum())
+n_pat = int(C.found_by.str.contains("regex").sum())
+WHY = {"landing page": "the paper gives the dataset's web page, not its DOI",
+       "doi (malformed)": "the dataset link in the text is broken"}
+missed = [f"{NAME.get(str(r.paper).rsplit('.', 1)[0].lower(), r.paper)} ({WHY.get(r.cited_as, r.cited_as)})"
+          for r in C[~C.result.str.startswith("found")].itertuples()]
+display(how("Normally we can't know which datasets a paper <i>should</i> have. One exception: the dataset's "
+            "record in DataCite says it belongs to the paper, <b>and</b> the paper cites it. Then the right "
+            "answer is certain, so these datasets are a small test for the two text searches.<br>"
+            f"<b>This run:</b> {len(C)} such datasets. Found {n_found}: DFP {n_dfp}, pattern search {n_pat}. "
+            + ("Missed: " + "; ".join(missed) + "." if missed else "None missed.") + "<br>"
+            "<b>Limits:</b> only repositories that record the link back to the paper take part (mostly SND "
+            "and Chalmers DORIS). It shows how often the searches <i>miss</i> data, not how often they report "
+            "something that isn't data.", card="Self-check"))
+display(how("<b>repaired</b>: a broken dataset link that the tool fixed automatically (it matches a "
+            "registered DOI).<br><b>dead</b>: a dataset link in the paper that does not work.<br>"
+            "<b>no id</b>: the paper mentions data, but gives no link.", card="Broken ids"))
+display(how("Rows where DFP and DFP-Verify give different answers: is it a dataset, is it the authors' own, "
+            "is it open or restricted. Listed row by row in the table below.", card="Rows where DFP"))
 ```
 
 ```{python}
@@ -535,50 +570,18 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
                         hovertemplate="%{y}: %{x}<extra>" + g + "</extra>")
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue)), legend=dict(y=-0.12))
-fig
+display(fig)
+how("What the tool is unsure about, by colour:<ul>"
+    "<li><b>Blue</b>: broken or missing dataset links.</li>"
+    "<li><b>Orange</b>: DFP and DFP-Verify disagree.</li>"
+    "<li><b>Green</b>: the paper's DOI, or datasets only DataCite links to the paper.</li></ul>"
+    "The table <i>To check, row by row</i> says what each issue means and what to do.")
 ```
 
 ```{python}
 #| title: "Data"
 data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}),
          "to_check", counts=qc.iloc[::-1][["group", "issue", "n"]].rename(columns={"n": "rows"}))
-```
-
-## Row {height=270px}
-
-```{python}
-#| title: "How the self-check works"
-# selfcheck.csv: datasets DataCite links to a paper AND the paper cites -> a free answer key
-n_dfp = int(C.found_by.str.contains("DFP").sum())
-n_pat = int(C.found_by.str.contains("regex").sum())
-WHY = {"landing page": "the paper gives the dataset's web page, not its DOI",
-       "doi (malformed)": "the dataset link in the text is broken"}
-missed = [f"{NAME.get(str(r.paper).rsplit('.', 1)[0].lower(), r.paper)} ({WHY.get(r.cited_as, r.cited_as)})"
-          for r in C[~C.result.str.startswith("found")].itertuples()]
-Markdown(f"""
-Normally we can't know which datasets a paper *should* have. One exception: the dataset's record in
-DataCite says it belongs to the paper, **and** the paper cites it. Then the right answer is certain,
-so these datasets work as a small test for the two text searches.
-
-**This run:** {len(C)} such datasets. Found {n_found}: DFP {n_dfp}, pattern search {n_pat}.
-{"Missed: " + "; ".join(missed) + "." if missed else "None missed."}
-
-**Limits:** only repositories that record the link back to the paper take part (mostly SND and
-Chalmers DORIS, rarely Zenodo). It shows how often the searches *miss* data, not how often they
-report something that isn't data.
-""")
-```
-
-```{python}
-#| title: "How to read this"
-Markdown("""
-Datasets are found in three ways. **DFP** is the AI detector that reads the paper. **Pattern search**
-is DFP-Verify's own rule-based search of the same text, for anything shaped like a DOI or an archive
-accession number (e.g. `PRJEB84056`). **DataCite** works the other way round: a repository's metadata
-says the dataset belongs to the paper. If the paper then turns out to cite it by web link, it counts;
-if the paper doesn't mention it at all, it is listed but not counted. The self-check uses those
-DataCite links as an answer key for the two text searches.
-""")
 ```
 
 ## Row {height=600px}
