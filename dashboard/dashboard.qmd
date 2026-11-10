@@ -149,14 +149,20 @@ def data_tab(rows, name, counts=None):
                 f'<div style="flex:1;min-height:0;overflow:auto">{table}</div></div>')
 
 # ---- paper level
-S["verdict"] = pd.Categorical(S["data_verdict"], ORDER, ordered=True)
+# Papers that say they generated no data have nothing to share: they are left out of the charts and of
+# the shares (user, 2026-11-10), so "no data found" only holds papers that might have had data.
+# ORDER without NOGEN -> their `verdict` is NaN and every groupby on it skips them.
+S["verdict"] = pd.Categorical(S["data_verdict"], [v for v in ORDER if v != NOGEN], ordered=True)
 S["key"] = S["paper"].str.replace(r"\.[^.]+$", "", regex=True).str.lower()
 NAME = dict(zip(S.key, S.paper))                    # per_dataset's paper key -> file name
 N = len(S)
+n_nogen  = int((S.data_verdict == NOGEN).sum())
+NB = N - n_nogen                                    # base for shares: papers that may have data
 n_shared = int(S.data_verdict.str.startswith("shared own data").sum())   # open + restricted access
 n_open   = int((S.data_verdict == SHARED).sum())
 n_req    = int((S.on_request_signal != "").sum())                         # "available on request"
 n_supp   = int((S.supplement_signal != "").sum()) if "supplement_signal" in S else 0   # data in article / SI
+CHART = [v for v in ORDER if v != NOGEN]            # verdicts shown in the charts
 
 AREAS = {"1": "Natural sciences", "2": "Engineering & technology", "3": "Medical & health sciences",
          "4": "Agricultural & veterinary sciences", "5": "Social sciences", "6": "Humanities & the arts"}
@@ -197,14 +203,14 @@ dict(value=len(OWN), color="light")
 #| content: valuebox
 #| title: "Share their own data (open or restricted access)"
 #| icon: database-check
-dict(value=f"{pct(n_shared, N)}  ({n_shared})", color="primary")
+dict(value=f"{pct(n_shared, NB)}  ({n_shared})", color="primary")
 ```
 
 ```{python}
 #| content: valuebox
 #| title: "…openly"
 #| icon: unlock
-dict(value=f"{pct(n_open, N)}  ({n_open})", color="primary")
+dict(value=f"{pct(n_open, NB)}  ({n_open})", color="primary")
 ```
 
 ```{python}
@@ -212,7 +218,7 @@ dict(value=f"{pct(n_open, N)}  ({n_open})", color="primary")
 #| title: "Say data are “available on request”"
 #| icon: envelope
 # every paper with the statement, also those that deposit other data (on_request_signal)
-dict(value=f"{pct(n_req, N)}  ({n_req})", color="light")
+dict(value=f"{pct(n_req, NB)}  ({n_req})", color="light")
 ```
 
 ```{python}
@@ -220,7 +226,7 @@ dict(value=f"{pct(n_req, N)}  ({n_req})", color="light")
 #| title: "Say data are in the article or its supplement"
 #| icon: paperclip
 # pattern search (supplement_signal); not counted as shared -- not deposited, no own DOI
-dict(value=f"{pct(n_supp, N)}  ({n_supp})", color="light")
+dict(value=f"{pct(n_supp, NB)}  ({n_supp})", color="light")
 ```
 
 ## Row {height=440px}
@@ -265,26 +271,39 @@ data_tab(S[["paper", "year", "data_verdict", "datasets"]].sort_values(["year", "
 
 ```{python}
 #| title: "Data verdict, all papers"
-vc = S.verdict.value_counts().reindex(ORDER).fillna(0).astype(int)
-vc = vc[vc > 0][::-1]
-fig = go.Figure(go.Bar(y=[LABEL[v] for v in vc.index], x=vc.values, orientation="h",
-                       marker=dict(color=[COLOR[v] for v in vc.index]),
-                       text=[f"{n}  ({pct(n, N)})" for n in vc.values], textposition="outside",
-                       textfont=dict(color=INK2), cliponaxis=False,
-                       hovertemplate="%{y}: %{x} paper(s)<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, vc.max() * 1.35]), showlegend=False)
+vc = S.verdict.value_counts().reindex(CHART).fillna(0).astype(int)
+# one bar per result; the three "shares own data" kinds are one bar, stacked (open and restricted access
+# are both sharing), so the bar length is all sharing papers
+SHARE_ROW = "Shares own data"
+row_of = {v: (SHARE_ROW if v in (SHARED, SH_RESTR, SH_UNK) else LABEL[v]) for v in CHART}
+rows_y = list(dict.fromkeys(row_of[v] for v in CHART if vc[v] > 0))[::-1]       # top = first
+fig = go.Figure()
+for v in CHART:
+    if vc[v] > 0:
+        _ = fig.add_bar(y=[row_of[v]], x=[vc[v]], orientation="h", name=LABEL[v],
+                        marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
+                        hovertemplate=f"{LABEL[v]}: %{{x}} paper(s) ({pct(vc[v], NB)})<extra></extra>")
+tot = {r: sum(int(vc[v]) for v in CHART if row_of[v] == r) for r in rows_y}
+for r in rows_y:
+    _ = fig.add_annotation(x=tot[r], y=r, text=f"{tot[r]}  ({pct(tot[r], NB)})", showarrow=False,
+                           xanchor="left", xshift=6, font=dict(color=INK2))
+_ = style(fig).update_layout(barmode="stack", showlegend=False,
+                             xaxis=dict(visible=False, range=[0, max(tot.values()) * 1.35]),
+                             yaxis=dict(categoryorder="array", categoryarray=rows_y))
 display(fig)
 how("One result per paper:<ul>"
-    "<li><b>Shares own data</b>: the paper points to the authors' own data and the link works "
-    "(open, or restricted access).</li>"
+    "<li><b>Shares own data</b>: the paper points to the authors' own data and the link works. One bar: "
+    "dark blue = open, light blue = restricted access (e.g. personal data). Both count as shared.</li>"
     "<li><b>In article / supplement only</b>: the paper says its data are in the article or its "
     "supplementary files, not in a repository. Not counted as shared.</li>"
     "<li><b>On request only</b>: the paper says the data can be asked for, but they are not stored "
     "anywhere. Not counted as shared.</li>"
     "<li><b>Reuses data only</b>: only other people's data.</li>"
     "<li><b>Declared, not verifiable</b>: the paper mentions data, but the link does not work.</li>"
-    "<li><b>No data generated</b>: the paper says it has no data of its own.</li>"
     "<li><b>No data found</b>: the rest. Not shared, or no data: the tool can't tell which.</li></ul>"
+    f"Papers that say they generated no data ({n_nogen} this run) have nothing to share, so they are left "
+    f"out of all charts and percentages: shares are of {NB} papers, not {N}. They are listed in the Papers "
+    "table.<br>"
     "The result is about what the paper says. Datasets that only DataCite links to a paper are on the "
     "<b>Tool check</b> page.")
 ```
@@ -292,8 +311,9 @@ how("One result per paper:<ul>"
 ```{python}
 #| title: "Data"
 data_tab(S[["paper", "data_verdict", "openness", "note"]].sort_values(["data_verdict", "paper"]), "verdicts",
-         counts=pd.DataFrame({"verdict": [LABEL[v] for v in vc.index[::-1]], "papers": vc.values[::-1],
-                              "share": [pct(n, N) for n in vc.values[::-1]]}))
+         counts=pd.DataFrame({"verdict": [LABEL[v] for v in CHART if vc[v] > 0],
+                              "papers": [int(vc[v]) for v in CHART if vc[v] > 0],
+                              "share": [pct(vc[v], NB) for v in CHART if vc[v] > 0]}))
 ```
 
 ## Row {height=380px}
@@ -304,6 +324,7 @@ data_tab(S[["paper", "data_verdict", "openness", "note"]].sort_values(["data_ver
 #| title: "By research field (SSIF area from Swepub)"
 ex = S.explode("areas")
 fa = ex.groupby(["areas", "verdict"], observed=False).size().unstack(fill_value=0)
+fa = fa[fa.sum(axis=1) > 0]                         # an area with only "no data generated" papers drops out
 fa = fa.loc[fa.sum(axis=1).sort_values().index]
 fig = go.Figure()
 for v in ORDER:
