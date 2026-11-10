@@ -192,7 +192,9 @@ def _link(rec, paper_doi):
 
 # ---------------------------------------------------------------- 1. paper DOI check
 def _words(s):
-    return {w for w in re.findall(r"[a-z0-9]+", (s or "").lower()) if len(w) >= 4}
+    # letters only: formulas with subscripts are written "CsGeCl\n 3" in the registry and "CsGeCl3" in
+    # the PDF; without the digits both give "csgecl"
+    return {w for w in re.findall(r"[a-z]+", (s or "").lower()) if len(w) >= 4}
 
 def _title_matches(title, head):
     tw = _words(title)
