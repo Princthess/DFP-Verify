@@ -121,7 +121,8 @@ breadcrumbs — just the answer). Columns:
 | `linked_via_datacite_not_in_paper` | datasets DataCite links to the paper that the paper does **not** cite — reported, **not counted** |
 | `reuses_data` | yes / no |
 | `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`); else SSIF codes from Swepub's own automatic classifier run on the title + abstract from OpenAlex (`swepub classify (SSIF, automatic)`, 3-digit level; on the corpus its top suggestion matched the manual Swepub area every time it suggested one, 14/16); else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data. The SSIF area is the code's first digit |
-| `no_data_signal` | the paper says it has no data of its own: the sentence found by pattern search (`stated in paper: "No new data were generated…"`), else a no-data article type from OpenAlex (review, editorial, erratum …). Empty otherwise |
+| `work_type` | OpenAlex work type of the checked paper DOI (article, review, editorial …). Reported only: not used as a no-data signal (reviews and meta-analyses do produce data; editorials etc. are a question of what to count as a research article) |
+| `no_data_signal` | the paper says it has no data of its own: the sentence found by pattern search (`stated in paper: "No new data were generated…"`; generic data-policy template phrasings). Empty otherwise |
 | `no_data_llm` | reserved for an LLM's own judgment of the same question, to compare with `no_data_signal`; empty for now |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections, a no-data statement in a paper that cites own data |
 
@@ -139,7 +140,7 @@ breadcrumbs — just the answer). Columns:
 - **`no data in paper; dataset linked via DataCite`** — the paper cites no data, but DataCite links
   datasets to it. **Not counted as shared**: sharing means the paper tells the reader where its data is.
 - **`no data generated (paper says so)`** — no data found, and `no_data_signal` is set: the paper
-  itself says it generated no data ("data sharing is not applicable …"), or it is a review/editorial.
+  itself says it generated no data ("data sharing is not applicable …").
 - **`no data found`** — everything else without data: not shared, *or* no data; the tool can't tell
   which.
 

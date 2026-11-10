@@ -125,12 +125,11 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         ok = pm.get("doi_status") in ("confirmed", "corrected", "found")
         pm.update(fields.paper_field(pm.get("dv_paper_doi") if ok else "", fc))
         fstat[pm.get("field_source") or "none"] += 1
-        # does the paper say it has no data of its own? (its own words, else a no-data article type)
-        pm["no_data_signal"] = nodata.signal(pm.get("no_data_quote", ""),
-                                             fc.work_type(pm["dv_paper_doi"]) if ok else "")
+        pm["work_type"] = fc.work_type(pm["dv_paper_doi"]) if ok else ""   # OpenAlex: article, review ...
+        pm["no_data_signal"] = nodata.signal(pm.get("no_data_quote", ""))  # the paper says it has no data
     print("  " + " | ".join(f"{k}:{v}" for k, v in fstat.most_common()))
     n_nd = sum(1 for p in per_paper if paper_meta.get(p, {}).get("no_data_signal"))
-    print(f"  no-data signal (paper says it has no data, or no-data article type): {n_nd} paper(s)")
+    print(f"  no-data statement (the paper says it generated no data): {n_nd} paper(s)")
 
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")

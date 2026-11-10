@@ -2,16 +2,18 @@
 NO DATA - does the paper say it has no data of its own? Splits "no data found" (not shared, OR no data)
 into a part the paper itself explains.
 
-Two deterministic signals (pattern search + metadata). An LLM judgment can be added next to them later
-(summary column `no_data_llm`) and compared, as DFP and the pattern search are compared for datasets.
-  1. statement(text) -- an explicit sentence such as "No new data were generated", "Data sharing is not
-     applicable to this article". Generic phrasings from data-availability policies (Springer Nature,
-     Wiley, PLOS, Taylor & Francis templates), not per-journal lists.
-  2. NO_DATA_TYPES -- OpenAlex work types that carry no data of their own (review, editorial, erratum ...).
-     The type comes from the checked paper DOI (fields.FieldCache.work_type).
-Neither proves the absence of data, and a paper can say "no new data" and still reuse data -- reuse
-wins in the verdict (fuse._summary_label). A paper that says "no data" but cites its own dataset is
-listed on the dashboard's Tool check page.
+The deterministic half (pattern search). An LLM judgment can be added next to it later (summary column
+`no_data_llm`) and compared, as DFP and the pattern search are compared for datasets.
+  statement(text) -- an explicit sentence such as "No new data were generated", "Data sharing is not
+  applicable to this article". Generic phrasings from data-availability policy templates (Springer
+  Nature, BMC, Wiley, Taylor & Francis, MDPI, Royal Society, Elsevier), not per-journal lists.
+Article type is deliberately NOT a signal: reviews (systematic reviews, meta-analyses) do produce data,
+and OpenAlex's `review` type is partly inferred; editorials, errata etc. are not research articles at
+all, which is a denominator question, not "the paper says it has no data". The type is reported
+separately (summary `work_type`).
+A statement doesn't prove the absence of data, and a paper can say "no new data" and still reuse data --
+reuse wins in the verdict (fuse._summary_label). A paper that says "no data" but cites its own dataset
+is listed on the dashboard's Tool check page.
 """
 import re
 
@@ -28,9 +30,10 @@ STATEMENT = re.compile(
     rf"|\b(?:this|the)\s+(?:article|paper|study|manuscript)\s+(?:does\s+not|did\s+not)\s+"
     rf"(?:contain|include|report|generate|use)\s+(?:any\s+)?(?:{_NO})?data\b"
     r"|\bdata\s+availability(?:\s+statement)?\s*[:.]?\s*not\s+applicable\b"
+    r"|\bavailability\s+of\s+data\s+and\s+materials?\s*[:.]?\s*not\s+applicable\b"        # BMC
+    r"|\b(?:this|the)\s+(?:article|paper|study)\s+has\s+no\s+(?:additional\s+|supporting\s+)?data\b"  # Royal Society
+    r"|\bthere\s+(?:are|is)\s+no\s+(?:data|datasets?)\s+associated\s+with\b"
     r")")
-
-NO_DATA_TYPES = {"review", "editorial", "erratum", "paratext", "retraction", "peer-review"}
 
 def statement(text):
     """The sentence where the paper says it has no data of its own, or ''. Text is flattened first
@@ -46,10 +49,6 @@ def statement(text):
     e = flat.find(".", m.end())
     return flat[m.start(): e + 1 if 0 <= e < m.end() + 150 else m.end() + 80].strip()
 
-def signal(quote, work_type):
-    """Summary text for `no_data_signal`: the paper's own words first, else the article type."""
-    if quote:
-        return f'stated in paper: "{quote}"'
-    if (work_type or "").lower() in NO_DATA_TYPES:
-        return f"article type: {work_type.lower()} (OpenAlex)"
-    return ""
+def signal(quote):
+    """Summary text for `no_data_signal`: the paper's own words."""
+    return f'stated in paper: "{quote}"' if quote else ""

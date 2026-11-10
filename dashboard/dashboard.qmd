@@ -47,7 +47,7 @@ SHARED, SH_RESTR, SH_UNK = ("shared own data (open)", "shared own data (restrict
                             "shared own data (access unknown)")
 REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "reuses data only",
                               "declared, unverifiable", "no data found")
-NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words, or a review/editorial
+NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words
 ORDER  = [SHARED, SH_RESTR, SH_UNK, REGONLY, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
           SH_UNK: "Shares own data: access unknown", REGONLY: "DataCite link only (not counted)",
@@ -372,7 +372,7 @@ add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no ab
 
 **Access** charts count *papers*, so papers without data stay in the picture. *No data generated* =
 the paper itself says it has no data of its own ("no new data were generated", "data sharing not
-applicable"), or it is a review / editorial (pattern search + OpenAlex type; see `no_data_signal`).
+applicable"; pattern search, see `no_data_signal`).
 *No data found* = everything else without data: not shared, or no data, which the tool can't tell apart.
 Access comes from the DataCite rights of the paper's own datasets; *mixed* = some open, some restricted.
 

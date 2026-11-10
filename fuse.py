@@ -77,8 +77,8 @@ def _summary_label(own, likely, reused, reg_only=(), openness="", no_data=""):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
     DataCite-only links never count as sharing; they only replace a bare 'no data found'.
-    A no-data signal (nodata.py: the paper says no data were generated, or it is a review/editorial)
-    also only replaces a bare 'no data found' -- it splits "not shared, or no data" in two.
+    A no-data statement (nodata.py: the paper says no data were generated) also only replaces a bare
+    'no data found' -- it splits "not shared, or no data" in two.
     Shared data with restricted access (deposited, access on conditions -- e.g. personal data) still
     counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
     'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed."""
@@ -151,7 +151,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "reuses_data":   "yes" if reused else "no",
         "field":         pm.get("field", ""),
         "field_source":  pm.get("field_source", ""),
-        # pattern search + article type now; an LLM's own judgment goes in no_data_llm (empty for now)
+        "work_type":     pm.get("work_type", ""),
+        # pattern search now; an LLM's own judgment goes in no_data_llm (empty for now)
         "no_data_signal": nd,
         "no_data_llm":   pm.get("no_data_llm", ""),
         "note":          "; ".join(notes),
@@ -260,7 +261,7 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
     with open(os.path.join(out_dir, "summary.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
-                                          "reuses_data", "field", "field_source", "no_data_signal",
+                                          "reuses_data", "field", "field_source", "work_type", "no_data_signal",
                                           "no_data_llm", "note"])
         w.writeheader(); w.writerows(summary_rows)
     with open(os.path.join(out_dir, "per_dataset.csv"), "w", encoding="utf-8-sig", newline="") as f:
