@@ -368,7 +368,9 @@ if HAVE_NORM:
                 "application). The rest are open.<br><b>Blue</b>: the datasets in these papers. "
                 "<b>Grey</b>: what is usual in the same repositories, in the same field (all their "
                 "datasets in DataCite; the whole repository if it has no field information). Hover a bar "
-                "to see which.<br>About datasets, not papers. Few datasets per field (k/n): read as "
+                "to see which.<br>Only fields with at least one own dataset in DataCite are shown, so "
+                "there can be fewer fields than in the research field chart.<br>"
+                "About datasets, not papers. Few datasets per field (k/n): read as "
                 "examples, not trends. Update with <i>python field_norm.py</i>."))
 else:
     display(Markdown("No reference yet. Run `python field_norm.py` after the pipeline (asks DataCite, a "
