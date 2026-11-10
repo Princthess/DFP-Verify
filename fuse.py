@@ -159,6 +159,7 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "doi":           _paper_doi_cols(pm)["dv_paper_doi"],
         "year":          pm.get("year", ""),
         "journal":       pm.get("journal", ""),
+        "publisher":     pm.get("publisher", ""),
         # data-availability statement: yes if either search finds one; both kept for comparison
         "has_das":       "yes" if (pm.get("das_pattern") or pm.get("das_llm") == "yes") else "no",
         "das_pattern":   pm.get("das_pattern", ""),
@@ -296,7 +297,7 @@ def fuse(per_paper, paper_meta=None):
 def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "summary.csv"), "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "journal", "has_das", "das_pattern", "das_llm",
+        w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "journal", "publisher", "has_das", "das_pattern", "das_llm",
                                           "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
                                           "reuses_data", "field", "field_source", "work_type", "no_data_signal",

@@ -125,7 +125,8 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         if st == "unconfirmed" or not doi:
             continue
         pm["year"] = reg.year(doi)                     # publication year (trends over time)
-        pm["journal"] = reg.journal(doi)               # journal name (DAS per journal)
+        pm["journal"] = reg.journal(doi)               # journal name
+        pm["publisher"] = reg.publisher(doi)           # publisher (policies and DAS templates are per publisher)
         orcids[p] = reg.paper_orcids(doi)              # paper authors' ORCIDs (own/reused, step 1a)
         ntext_lc, bounds = texts.get(p, ("", {}))
         added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg), text_lc=ntext_lc)

@@ -138,6 +138,7 @@ breadcrumbs — just the answer). Columns:
 | `no_data_llm` | reserved for an LLM's own judgment of the same question, to compare with `no_data_signal`; empty for now |
 | `on_request_signal` | the paper says its data are available on request (`stated in paper: "Data will be made available on request."`): the data exist but are not deposited. Filled for every paper that says it, also papers that deposit some of their data. The sentence must be about giving out data, and not name a repository or identifier (a deposit with access on request is restricted access, i.e. shared) |
 | `journal` | the journal the paper appeared in (CSL `container-title` of the paper DOI); blank for reports, blogs, papers without a confirmed DOI |
+| `publisher` | the publisher (CSL `publisher` of the paper DOI), legal-form suffixes dropped ("Elsevier BV" → "Elsevier"); as the registry names it, no publisher list |
 | `has_das` | `yes` if the paper has a data availability statement, by either `das_pattern` or `das_llm` |
 | `das_pattern` | the statement's heading as written, found by pattern search (`statements.das_heading`): "Data availability (statement)", "Data accessibility", "Data and model availability statement", "Availability of data and materials", "Open Research" … written as a heading (capitalised, then a colon, a new sentence or a line end), so prose like "improves data availability" does not count |
 | `das_llm` | DFP's own `das_found` (`yes` / `no`). Where the two differ, the dashboard's Tool check lists the paper |

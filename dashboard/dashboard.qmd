@@ -549,7 +549,7 @@ else:
     display(Markdown("No `field_norm_datasets.csv` yet."))
 ```
 
-# Journals & repositories {scrolling="true"}
+# Publishers & repositories {scrolling="true"}
 
 ## Row {height=560px}
 
@@ -587,30 +587,66 @@ data_tab(S[["paper", "journal", "has_das", "das_pattern", "das_llm", "data_verdi
 ### Column {.tabset}
 
 ```{python}
-#| title: "Journals: papers with and without a data availability statement"
-JR = S.assign(journal=S.journal.replace("", "(no journal: report, blog …)"))
-jt = JR.groupby(["journal", "has_das"]).size().unstack(fill_value=0).reindex(columns=["yes", "no"], fill_value=0)
-jt = jt.assign(n=jt.sum(axis=1)).sort_values(["n", "yes"]).tail(25)       # the 25 biggest journals
+#| title: "Publishers: papers with and without a data availability statement"
+# Per publisher, not per journal: journal policies and their data-availability templates are mostly set by
+# the publisher, and most journals have only one or two papers. Small publishers are pooled in "Other".
+MIN_PUB = 4
+PB = S[S.verdict.notna()].assign(pub=lambda d: d.publisher.replace("", "(no publisher: report, preprint …)"))
+_big = PB.pub.value_counts()
+PB["pub_g"] = PB.pub.where(PB.pub.map(_big) >= MIN_PUB, f"Other (fewer than {MIN_PUB} papers each)")
+PORDER = [p for p in _big.index if _big[p] >= MIN_PUB] + [f"Other (fewer than {MIN_PUB} papers each)"]
+PORDER = [p for p in PORDER if p in set(PB.pub_g)][::-1]                   # biggest on top
+pt = PB.groupby(["pub_g", "has_das"]).size().unstack(fill_value=0).reindex(index=PORDER, columns=["yes", "no"], fill_value=0)
 fig = go.Figure()
 # own neutral pair (slate): blue and gray already mean "shares data" / "no data" in the verdict charts
 for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
-    _ = fig.add_bar(y=jt.index, x=jt[k], orientation="h", name=DASL[k],
+    _ = fig.add_bar(y=[f"{p} ({int(pt.loc[p].sum())})" for p in pt.index], x=pt[k], orientation="h", name=DASL[k],
                     marker=dict(color=col, line=dict(color=SURF, width=2)),
                     hovertemplate="%{y}: %{x} paper(s)<extra>" + DASL[k] + "</extra>")
-_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15),
-                                                             yaxis=dict(tickfont=dict(size=11)))
-display(fig)
-how("Each bar is one journal: papers with a data availability statement (blue) and without (gray). "
-    "Journal names from the paper's DOI. Shows the 25 journals with the most papers.<br>With a small "
-    "corpus most journals have one paper, so this says little yet. It becomes useful with many papers "
-    "per journal.")
+_ = fig.update_layout(barmode="stack")
+_ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15))
+display(NORM_BTNS); display(fig)
+how(f"Papers with a data availability statement (dark) and without (light), per <b>publisher</b> (from "
+    f"the paper's DOI). Publishers set most journal data policies and statement templates, so this shows "
+    f"where a policy makes a difference. Publishers with fewer than {MIN_PUB} papers are pooled in "
+    "<b>Other</b>; the number after the name is the papers.<br>Not per journal: most journals have only "
+    "one or two papers here. The journal of every paper is in the <b>Data</b> tab.")
 ```
 
 ```{python}
 #| title: "Data"
-data_tab(JR[["journal", "paper", "has_das", "data_verdict"]].sort_values(["journal", "paper"]), "journals",
-         counts=jt.rename(columns={"yes": "with statement", "no": "without", "n": "papers"})
-                  .iloc[::-1].reset_index())
+data_tab(PB[["publisher", "journal", "paper", "has_das", "data_verdict"]].sort_values(["publisher", "journal", "paper"]),
+         "publishers_das", counts=pt.rename(columns={"yes": "with statement", "no": "without"}).iloc[::-1]
+                                    .rename_axis("publisher").reset_index())
+```
+
+## Row {height=420px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Data verdict, by publisher"
+pv = PB.groupby(["pub_g", "verdict"], observed=False).size().unstack(fill_value=0).reindex(index=PORDER, fill_value=0)
+fig = go.Figure()
+for v in ORDER:
+    if v in pv and pv[v].sum():
+        _ = fig.add_bar(y=[f"{p} ({int(pv.loc[p].sum())})" for p in pv.index], x=pv[v], orientation="h",
+                        name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
+                        hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
+_ = fig.update_layout(barmode="stack")
+_ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15, traceorder="normal"))
+display(NORM_BTNS); display(fig)
+how(f"The data verdict of the papers, per publisher. Colours as on the Overview page. <b>Percent</b> "
+    f"compares publishers of different size. Publishers with fewer than {MIN_PUB} papers are pooled in "
+    "<b>Other</b>.<br>Few papers per publisher: read as a hint where to look (e.g. many “on request” "
+    "under one publisher's policy), not as a ranking.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(PB[["publisher", "journal", "paper", "data_verdict", "datasets"]].sort_values(["publisher", "paper"]),
+         "publishers_verdict", counts=pv.loc[:, pv.sum() > 0].rename(columns=LABEL).iloc[::-1]
+                                         .rename_axis("publisher").reset_index())
 ```
 
 ## Row {height=420px}

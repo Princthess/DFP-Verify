@@ -124,6 +124,25 @@ class RegistryCache:
         import html
         return html.unescape(self.d[k])                     # "Antennas &amp; Propagation"
 
+    def publisher(self, doi):
+        """Publisher of the paper (CSL `publisher`), legal-form suffixes dropped so the same publisher
+        groups together: "Elsevier BV" -> "Elsevier", "MDPI AG" -> "MDPI". As the registry names it -- no
+        list of publishers (Taylor & Francis registers as "Informa UK Limited")."""
+        k = "publisher|" + doi.lower()
+        if k not in self.d:
+            try:
+                r = S.get("https://doi.org/" + doi, headers={"Accept": "application/vnd.citationstyles.csl+json"},
+                          timeout=15, allow_redirects=True)
+                if r.status_code != 200: return ""
+                self.d[k] = (r.json().get("publisher") or "").strip()
+            except Exception:
+                return ""                                   # network error: don't cache
+            time.sleep(0.05)
+        import html
+        p = html.unescape(self.d[k])
+        p = re.sub(r"\s*\([A-Za-z]{2,6}\)$", "", p)        # "American Chemical Society (ACS)", "(PLoS)"
+        return re.sub(r"[,\s]+(?:B\.?V\.?|AG|GmbH|LLC|Ltd\.?|Limited|Inc\.?|S\.?A\.?|SA|AB|Oy|plc|Co\.?)$", "", p).strip()
+
     def crossref_search(self, head):
         """Top Crossref matches for the first page text -> [(doi, title)]. Only ever used through
         the title check, so a loose search hit can't slip through."""
