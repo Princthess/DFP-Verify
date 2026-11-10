@@ -1,5 +1,5 @@
 ---
-title: "DFP-Verify · research data in full texts"
+title: "Research data in full texts"
 format:
   dashboard:
     theme: cosmo
@@ -392,7 +392,7 @@ else:
 # Sources: per_dataset.csv, merged_output.csv (dv_disagreement), selfcheck.csv (answer key).
 M = pd.read_csv(os.path.join(OUT, "merged_output.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 C = pd.read_csv(os.path.join(OUT, "selfcheck.csv"), encoding="utf-8-sig", dtype=str).fillna("")
-G_ID, G_TOOLS, G_PAPER = "Broken or missing ids", "DFP and DFP-Verify differ", "Paper metadata"
+G_ID, G_TOOLS, G_PAPER = "Broken or missing ids", "LLM vs pattern search / registries", "Paper metadata"
 rows = []
 def add(group, issue, paper, ident, todo): rows.append(dict(group=group, issue=issue, paper=paper, identifier=ident, todo=todo))
 
@@ -417,22 +417,24 @@ for _, r in D[D.status == "likely-no-doi"].iterrows():
         "Data statement points to a site, not a record; check by hand")
 for _, r in C[C.result.str.startswith("not found")].iterrows():
     add(G_TOOLS, "Known dataset not found in the text", r.paper, r.identifier,
-        f"DataCite links it and the paper cites it as {r.cited_as}; neither text detector picked it up")
+        f"DataCite links it and the paper cites it as {r.cited_as}; neither the LLM nor pattern search found it")
 
 for _, r in M[M.dv_disagreement != ""].iterrows():
     for part in r.dv_disagreement.split("; "):
         if part.startswith("detect:"):
-            add(G_TOOLS, "Not in DFP output, found by the other sources", r.file, r.identifier,
-                "Found by " + " + ".join({"llm": "DFP", "regex": "pattern search", "datacite": "DataCite",
+            add(G_TOOLS, "Not found by the LLM, found by pattern search or DataCite", r.file, r.identifier,
+                "Found by " + " + ".join({"llm": "LLM", "regex": "pattern search", "datacite": "DataCite",
                                           "text": "web link in text"}.get(t, t)
                                          for t in part.split("(found by ")[-1].rstrip(")").split("+")))
         elif part.startswith("isdata:"):
-            add(G_TOOLS, "DFP lists it as data, registry says not data", r.file, r.identifier,
+            add(G_TOOLS, "LLM says dataset, DOI registry says not a dataset", r.file, r.identifier,
                 "Registry type: " + (r.dv_verdict.split("(")[-1].rstrip(")") or "?") + ". Usually a cited article; check if wanted")
         elif part.startswith("prov:"):
-            add(G_TOOLS, "Own vs reused differs", r.file, r.identifier, part[len("prov: "):])
+            add(G_TOOLS, "Own vs reused differs", r.file, r.identifier,
+            part[len("prov: "):].replace("DFP=", "LLM: ").replace("DV=", "ORCID / author names: "))
         elif part.startswith("open:"):
-            add(G_TOOLS, "Open vs restricted differs", r.file, r.identifier, part[len("open: "):])
+            add(G_TOOLS, "Open vs restricted differs", r.file, r.identifier,
+            part[len("open: "):].replace("DFP=", "LLM: ").replace("DV=", "DataCite access rights: "))
 
 pdoi = M.groupby("file").agg(check=("dv_paper_doi_check", "first"), given=("paper_doi", "first"), doi=("dv_paper_doi", "first"))
 for f, r in pdoi.iterrows():
@@ -482,7 +484,7 @@ dict(value=f"{n_found} / {len(C)}" if len(C) else "–", color="light")
 
 ```{python}
 #| content: valuebox
-#| title: "Rows where DFP and DFP-Verify differ"
+#| title: "Rows where the LLM and pattern search / registries differ"
 #| icon: arrow-left-right
 dict(value=int((M.dv_disagreement != "").sum()), color="light")
 ```
@@ -495,12 +497,12 @@ dict(value=int((M.dv_disagreement != "").sum()), color="light")
 #| title: "Who found each dataset (in the text, or only via DataCite)"
 def finder(src):
     s = set(src.split("+"))
-    if "llm" in s and "regex" in s: return "Both text searches (DFP + pattern search)"
-    if "llm" in s:                  return "DFP only"
+    if "llm" in s and "regex" in s: return "Both text searches (LLM + pattern search)"
+    if "llm" in s:                  return "LLM only"
     if "regex" in s:                return "Pattern search only"
     if "text" in s:                 return "Found via DataCite; paper gives a web link, not the DOI"
     return "Only in DataCite; paper doesn't mention it (not counted)"
-FIND = ["Both text searches (DFP + pattern search)", "DFP only", "Pattern search only",
+FIND = ["Both text searches (LLM + pattern search)", "LLM only", "Pattern search only",
         "Found via DataCite; paper gives a web link, not the DOI", "Only in DataCite; paper doesn't mention it (not counted)"]
 R = D[D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("likely")].copy()
 R["finder"] = R.source.map(finder)
@@ -517,8 +519,8 @@ for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not co
 _ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.2))
 display(fig)
 display(how("How each dataset was found:<ul>"
-            "<li><b>DFP</b>: the AI detector that reads the paper.</li>"
-            "<li><b>Pattern search</b>: DFP-Verify's rule-based search of the same text, for DOIs and archive "
+            "<li><b>LLM</b>: a large language model reads the paper and lists the data it mentions.</li>"
+            "<li><b>Pattern search</b>: a rule-based search (regular expressions) of the same text, for DOIs and archive "
             "numbers (e.g. PRJEB84056).</li>"
             "<li><b>DataCite</b>: the other way round. The dataset's record says it belongs to the paper. It "
             "counts only if the paper also mentions the dataset (e.g. by web link).</li></ul>"
@@ -533,7 +535,7 @@ missed = [f"{NAME.get(str(r.paper).rsplit('.', 1)[0].lower(), r.paper)} ({WHY.ge
 display(how("Normally we can't know which datasets a paper <i>should</i> have. One exception: the dataset's "
             "record in DataCite says it belongs to the paper, <b>and</b> the paper cites it. Then the right "
             "answer is certain, so these datasets are a small test for the two text searches.<br>"
-            f"<b>This run:</b> {len(C)} such datasets. Found {n_found}: DFP {n_dfp}, pattern search {n_pat}. "
+            f"<b>This run:</b> {len(C)} such datasets. Found {n_found}: LLM {n_dfp}, pattern search {n_pat}. "
             + ("Missed: " + "; ".join(missed) + "." if missed else "None missed.") + "<br>"
             "<b>Limits:</b> only repositories that record the link back to the paper take part (mostly SND "
             "and Chalmers DORIS). It shows how often the searches <i>miss</i> data, not how often they report "
@@ -541,8 +543,10 @@ display(how("Normally we can't know which datasets a paper <i>should</i> have. O
 display(how("<b>repaired</b>: a broken dataset link that the tool fixed automatically (it matches a "
             "registered DOI).<br><b>dead</b>: a dataset link in the paper that does not work.<br>"
             "<b>no id</b>: the paper mentions data, but gives no link.", card="Broken ids"))
-display(how("Rows where DFP and DFP-Verify give different answers: is it a dataset, is it the authors' own, "
-            "is it open or restricted. Listed row by row in the table below.", card="Rows where DFP"))
+display(how("Rows where the LLM and the other checks give different answers: is it a dataset (DOI "
+            "registry), is it the authors' own (ORCID and author names), is it open or restricted (DataCite "
+            "access rights), or found only by pattern search. Listed row by row in the table below.",
+            card="Rows where the LLM"))
 ```
 
 ```{python}
@@ -573,7 +577,7 @@ _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(),
 display(fig)
 how("What the tool is unsure about, by colour:<ul>"
     "<li><b>Blue</b>: broken or missing dataset links.</li>"
-    "<li><b>Orange</b>: DFP and DFP-Verify disagree.</li>"
+    "<li><b>Orange</b>: the LLM disagrees with pattern search or a registry.</li>"
     "<li><b>Green</b>: the paper's DOI, or datasets only DataCite links to the paper.</li></ul>"
     "The table <i>To check, row by row</i> says what each issue means and what to do.")
 ```
