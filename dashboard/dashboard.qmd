@@ -63,6 +63,8 @@ format:
           .bslib-value-box:not(.showcase-bottom) .value-box-grid {
             grid-template-columns: 22% 1fr !important; grid-template-rows: 1fr !important;
             grid-template-areas: "left right" !important; }
+          .bslib-value-box:not(.showcase-bottom) .value-box-grid .value-box-showcase { grid-area: left !important; padding: 0 0 0 .5rem !important; }
+          .bslib-value-box:not(.showcase-bottom) .value-box-grid .value-box-area { grid-area: right !important; }
         }
         </style>
 execute:
