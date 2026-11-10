@@ -48,13 +48,14 @@ SHARED, SH_RESTR, SH_UNK = ("shared own data (open)", "shared own data (restrict
 REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "reuses data only",
                               "declared, unverifiable", "no data found")
 NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words
-ORDER  = [SHARED, SH_RESTR, SH_UNK, REGONLY, REUSE, DECL, NOGEN, NONE]
+ONREQ  = "own data on request only (not shared)"  # nodata.on_request: data exist, not deposited
+ORDER  = [SHARED, SH_RESTR, SH_UNK, ONREQ, REGONLY, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
-          SH_UNK: "Shares own data: access unknown", REGONLY: "DataCite link only (not counted)",
+          SH_UNK: "Shares own data: access unknown", ONREQ: "Own data on request only (not shared)", REGONLY: "DataCite link only (not counted)",
           REUSE: "Reuses data only", DECL: "Declared, not verifiable",
           NOGEN: "No data generated (paper says so)", NONE: "No data found (not shared, or no data)"}
 # the two "no data" categories share the gray family; lighter = the paper explains it has none
-COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", REGONLY: "#eb6834", REUSE: "#1baf7a",
+COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", ONREQ: "#6250d6", REGONLY: "#eb6834", REUSE: "#1baf7a",
           DECL: "#eda100", NOGEN: "#dedcd3", NONE: "#b4b2a8"}
 INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
 
@@ -94,6 +95,7 @@ NAME = dict(zip(S.key, S.paper))                    # per_dataset's paper key ->
 N = len(S)
 n_shared = int(S.data_verdict.str.startswith("shared own data").sum())   # open + restricted access
 n_open   = int((S.data_verdict == SHARED).sum())
+n_req    = int((S.on_request_signal != "").sum())                         # "available on request"
 
 AREAS = {"1": "Natural sciences", "2": "Engineering & technology", "3": "Medical & health sciences",
          "4": "Agricultural & veterinary sciences", "5": "Social sciences", "6": "Humanities & the arts"}
@@ -142,6 +144,14 @@ dict(value=f"{pct(n_shared, N)}  ({n_shared})", color="primary")
 #| title: "…openly"
 #| icon: unlock
 dict(value=f"{pct(n_open, N)}  ({n_open})", color="primary")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Say data are “available on request”"
+#| icon: envelope
+# every paper with the statement, also those that deposit other data (on_request_signal)
+dict(value=f"{pct(n_req, N)}  ({n_req})", color="light")
 ```
 
 ## Row {height=440px}
@@ -227,14 +237,16 @@ data_tab(ex[["paper", "areas", "data_verdict", "field", "field_source"]].rename(
 # paper's own datasets (summary `openness`): open / restricted (incl. closed, embargoed) / mixed.
 # Colours: access hues are new; orange = DataCite-only and gray = no data, as in the verdict charts.
 ACC = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"),
-       ("mixed", "Mixed (open + restricted)", "#2a78d6"), ("unknown", "Shared, access unknown", "#6250d6"),
+       ("mixed", "Mixed (open + restricted)", "#2a78d6"), ("unknown", "Shared, access unknown", COLOR[SH_UNK]),
+       ("onreq", LABEL[ONREQ], COLOR[ONREQ]),
        ("declared", "Declared, not verifiable", "#8d8b84"), ("reuse", "Reuses data only", "#e87ba4"),
        ("regonly", "DataCite link only (not counted)", "#eb6834"),
        ("nogen", LABEL[NOGEN], COLOR[NOGEN]), ("none", LABEL[NONE], COLOR[NONE])]
 ACC_LABEL = {k: l for k, l, _ in ACC}
 def access(r):
     if r.data_verdict.startswith("shared own data"): return r.openness if r.openness in ("open", "restricted", "mixed") else "unknown"
-    return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly", NOGEN: "nogen"}.get(r.data_verdict, "none")
+    return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly", NOGEN: "nogen",
+            ONREQ: "onreq"}.get(r.data_verdict, "none")
 S["access"] = S.apply(access, axis=1)
 
 def access_bars(fig, df, x, row=None, col=None, seen=None):
@@ -373,6 +385,9 @@ add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no ab
 **Access** charts count *papers*, so papers without data stay in the picture. *No data generated* =
 the paper itself says it has no data of its own ("no new data were generated", "data sharing not
 applicable"; pattern search, see `no_data_signal`).
+*Own data on request only* = the paper shares no data but says its data are available from the
+authors on request: the data exist but are not deposited, so they don't count as shared. The KPI
+counts every paper with such a sentence, also papers that deposit some of their data.
 *No data found* = everything else without data: not shared, or no data, which the tool can't tell apart.
 Access comes from the DataCite rights of the paper's own datasets; *mixed* = some open, some restricted.
 

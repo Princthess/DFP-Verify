@@ -54,7 +54,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         text = open(txt, encoding="utf-8", errors="ignore").read()
         header[p] = text[:2500]                       # first-page author block (for own/reused)
         heads[p]  = detect_union.normalize_text(text[:6000])   # first page(s), for the paper-DOI check
-        paper_meta.setdefault(p, {})["no_data_quote"] = nodata.statement(text)   # "no new data were generated"
+        pmeta = paper_meta.setdefault(p, {})
+        pmeta["no_data_signal"]    = nodata.signal(nodata.statement(text))    # "no new data were generated"
+        pmeta["on_request_signal"] = nodata.signal(nodata.on_request(text))   # "available on request"
         cands = detect_union.union_detect(text=text, dfp_rows=dfp_by.get(p, []))
         # in-text provenance: locate each id against the DAS / reference / supplement landmarks.
         # DAS region is found by the heading locator; DFP's own source_section also counts.
@@ -126,10 +128,10 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         pm.update(fields.paper_field(pm.get("dv_paper_doi") if ok else "", fc))
         fstat[pm.get("field_source") or "none"] += 1
         pm["work_type"] = fc.work_type(pm["dv_paper_doi"]) if ok else ""   # OpenAlex: article, review ...
-        pm["no_data_signal"] = nodata.signal(pm.get("no_data_quote", ""))  # the paper says it has no data
     print("  " + " | ".join(f"{k}:{v}" for k, v in fstat.most_common()))
     n_nd = sum(1 for p in per_paper if paper_meta.get(p, {}).get("no_data_signal"))
-    print(f"  no-data statement (the paper says it generated no data): {n_nd} paper(s)")
+    n_or = sum(1 for p in per_paper if paper_meta.get(p, {}).get("on_request_signal"))
+    print(f"  data statements: {n_nd} say no data were generated, {n_or} say data are available on request")
 
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")

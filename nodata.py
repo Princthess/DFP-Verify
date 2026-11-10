@@ -50,5 +50,44 @@ def statement(text):
     return flat[m.start(): e + 1 if 0 <= e < m.end() + 150 else m.end() + 80].strip()
 
 def signal(quote):
-    """Summary text for `no_data_signal`: the paper's own words."""
+    """Summary text for `no_data_signal` / `on_request_signal`: the paper's own words."""
     return f'stated in paper: "{quote}"' if quote else ""
+
+
+# ---- "available on request": the paper says data exist but are only given out when asked ------------
+# The other half of "no data found": data the authors HAVE but did not deposit. Not counted as shared
+# (sharing = the paper tells the reader where the data is). Generic template phrasings:
+#   "available from the corresponding author (up)on (reasonable) request"
+#   "(up)on reasonable request to/from the authors", "can be obtained/provided by the authors on request"
+#   "available (up)on (reasonable) request" when the sentence is about data
+REQUEST = re.compile(
+    r"(?is)\b(?:up)?on\s+(?:a\s+)?(?:reasonable|justified|written|formal)?\s*request\b"
+    r"|\brequests?\s+(?:for|to\s+access)\s+(?:the\s+)?data(?:sets?)?\s+should\s+be\s+(?:directed|addressed|sent)\b"
+    r"|\bcontact(?:ing)?\s+the\s+(?:corresponding\s+)?authors?\b")
+ABOUT_DATA = re.compile(r"(?i)\b(?:data(?:\s*sets?)?|datasets?|raw\s+data|data\s+files?)\b")
+# ...and about making them available (not "upon request, participants could withdraw their data")
+GIVEN = re.compile(r"(?i)\b(?:available|provided|obtain(?:ed|able)?|shared|accessible|requests?\s+for)\b")
+# a deposit with access on request (restricted access, e.g. "access upon request through SND") is
+# shared, not "on request only": skip sentences that name a repository, an archive or an identifier
+DEPOSIT = re.compile(r"(?i)\b(?:repositor(?:y|ies)|archive|data\s*service|deposited|doi\b|10\.\d{4,9}/|https?://)")
+
+def on_request(text):
+    """The sentence where the paper says its data are available on request, or ''. The sentence must be
+    about giving out data (so "models are available from the authors on request" doesn't count) and
+    not about a deposit with access on request."""
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")
+    flat = re.sub(r"\s+", " ", flat)
+    for m in REQUEST.finditer(flat):
+        dot = flat.rfind(". ", max(0, m.start() - 300), m.start())
+        s = dot + 2 if dot >= 0 else max(0, m.start() - 300)
+        e = flat.find(".", m.end())
+        e = e + 1 if 0 <= e < m.end() + 200 else m.end() + 80
+        # start after a column break ("perfor- Data will ...") or a "Data availability" heading, if any:
+        # text before them is usually another column of the PDF
+        cut = [x.end() for x in re.finditer(r"[a-z]- (?=[A-Z])|(?i:\bdata\s+availability(?:\s+statement)?\s*:?\s*)",
+                                            flat[s:m.start()])]
+        if cut: s += cut[-1]
+        sent = flat[s:e].strip()
+        if ABOUT_DATA.search(sent) and GIVEN.search(sent) and not DEPOSIT.search(sent):
+            return sent
+    return ""

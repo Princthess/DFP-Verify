@@ -69,21 +69,25 @@ def _disagreement(c):
 
 REG_ONLY_VERDICT = "no data in paper; dataset linked via DataCite"
 NO_DATA_STATED = "no data generated (paper says so)"
+ON_REQUEST = "own data on request only (not shared)"
 
 SHARED_ACCESS = {"open": "open", "restricted": "restricted access", "mixed": "restricted access",
                  "unknown": "access unknown"}
 
-def _summary_label(own, likely, reused, reg_only=(), openness="", no_data=""):
+def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on_request=""):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
     DataCite-only links never count as sharing; they only replace a bare 'no data found'.
     A no-data statement (nodata.py: the paper says no data were generated) also only replaces a bare
     'no data found' -- it splits "not shared, or no data" in two.
+    "Available on request" (nodata.on_request) means the authors have data but did not deposit it: not
+    shared, but about their OWN data, so it ranks above reuse; shared own data and a declared id win.
     Shared data with restricted access (deposited, access on conditions -- e.g. personal data) still
     counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
     'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed."""
     if own:      return f"shared own data ({SHARED_ACCESS.get(openness, 'access unknown')})"
     if likely:   return "declared, unverifiable"
+    if on_request: return ON_REQUEST
     if reused:   return "reuses data only"
     if reg_only: return REG_ONLY_VERDICT
     if no_data:  return NO_DATA_STATED
@@ -143,7 +147,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "doi":           _paper_doi_cols(pm)["dv_paper_doi"],
         "year":          pm.get("year", ""),
         "data_verdict":  _summary_label(own, likely, reused, reg_only,
-                                        openness=_own_openness(own_open, own_restr, unknown), no_data=nd),
+                                        openness=_own_openness(own_open, own_restr, unknown), no_data=nd,
+                                        on_request=pm.get("on_request_signal", "")),
         "openness":      _own_openness(own_open, own_restr, unknown),
         "datasets":      _dataset_cell(confirmed, likely),
         "linked_via_datacite_not_in_paper": "; ".join(f"{c.get('provenance') or '?'}: {c.get('repository') or 'DataCite'}:"
@@ -155,6 +160,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         # pattern search now; an LLM's own judgment goes in no_data_llm (empty for now)
         "no_data_signal": nd,
         "no_data_llm":   pm.get("no_data_llm", ""),
+        # filled for every paper that says it, also when it shares other data (partial sharing)
+        "on_request_signal": pm.get("on_request_signal", ""),
         "note":          "; ".join(notes),
     }
 
@@ -262,7 +269,7 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
         w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
                                           "reuses_data", "field", "field_source", "work_type", "no_data_signal",
-                                          "no_data_llm", "note"])
+                                          "no_data_llm", "on_request_signal", "note"])
         w.writeheader(); w.writerows(summary_rows)
     with open(os.path.join(out_dir, "per_dataset.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "identifier", "kind", "source", "registry", "found_in",

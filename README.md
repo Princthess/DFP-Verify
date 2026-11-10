@@ -124,6 +124,7 @@ breadcrumbs — just the answer). Columns:
 | `work_type` | OpenAlex work type of the checked paper DOI (article, review, editorial …). Reported only: not used as a no-data signal (reviews and meta-analyses do produce data; editorials etc. are a question of what to count as a research article) |
 | `no_data_signal` | the paper says it has no data of its own: the sentence found by pattern search (`stated in paper: "No new data were generated…"`; generic data-policy template phrasings). Empty otherwise |
 | `no_data_llm` | reserved for an LLM's own judgment of the same question, to compare with `no_data_signal`; empty for now |
+| `on_request_signal` | the paper says its data are available on request (`stated in paper: "Data will be made available on request."`): the data exist but are not deposited. Filled for every paper that says it, also papers that deposit some of their data. The sentence must be about giving out data, and not name a repository or identifier (a deposit with access on request is restricted access, i.e. shared) |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections, a no-data statement in a paper that cites own data |
 
 `data_verdict`, in priority order:
@@ -136,6 +137,8 @@ breadcrumbs — just the answer). Columns:
 - **`shared own data (access unknown)`** — no access information in the metadata.
 - **`declared, unverifiable`** — stated in the data-availability statement but the id doesn't resolve
   (a dead dataset DOI is itself a FAIR red flag).
+- **`own data on request only (not shared)`** — the paper deposits nothing but says its data are
+  available on request (`on_request_signal`). **Not counted as shared.**
 - **`reuses data only`**
 - **`no data in paper; dataset linked via DataCite`** — the paper cites no data, but DataCite links
   datasets to it. **Not counted as shared**: sharing means the paper tells the reader where its data is.
