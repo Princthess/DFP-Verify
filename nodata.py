@@ -91,3 +91,46 @@ def on_request(text):
         if ABOUT_DATA.search(sent) and GIVEN.search(sent) and not DEPOSIT.search(sent):
             return sent
     return ""
+
+
+# ---- "data are in the article / its supplement": shared with the paper, not deposited -------------------
+# Monitored as a signal, not counted as shared (sharing = deposited somewhere, open or restricted). Journals
+# and FAIR guidance discourage supplements for data (no own DOI, often PDF, often derived values only);
+# PLOS Open Science Indicators report "data in Supporting Information" separately from repositories.
+# Generic template phrasings:
+#   "All data generated or analysed during this study are included in this published article (and its
+#    supplementary information files)"                                           (Springer Nature / BMC)
+#   "The data supporting this article have been included as part of the Supplementary Information"  (RSC)
+#   "The data are provided in the supplementary material / Supporting Information"
+# A bare mention of a supplement is NOT enough: Elsevier's "Supplementary data to this article can be found
+# online" and SAGE's "Supplemental material for this article is available online" are attached to every
+# supplement, figures included. So the pattern needs the order "data ... are included/provided ... in
+# ... the article / supplement", within one sentence and close together (a long sentence that mentions a
+# supplement and, elsewhere, a dataset is not enough).
+_SUPP = (r"(?:supplementary|supplemental|supporting|additional|electronic\s+supplementary)\s+"
+         r"(?:information|materials?|data|files?|tables?|datasets?)"
+         r"|(?:this|the)\s+(?:published\s+)?(?:article|paper|manuscript)")
+SUPPLEMENT = re.compile(
+    r"(?i)\bdata(?:\s*sets?)?\b[^.]{0,120}?"
+    # not "presented"/"reported": "the data presented in this article are available on request" (MDPI) and
+    # "the work reported in this paper" are not about where the data are
+    r"\b(?:included|provided|available|found|contained|given|listed)\b[^.]{0,40}?"
+    rf"\b(?:in|within|with|as\s+part\s+of)\b[^.]{{0,30}}?\b(?:{_SUPP})\b")
+
+def supplement(text):
+    """The sentence where the paper says its data are in the article or its supplement, or ''."""
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")
+    flat = re.sub(r"\s+", " ", flat)
+    for m in SUPPLEMENT.finditer(flat):
+        if DEPOSIT.search(m.group(0)):        # "deposited in Zenodo and included in the SI": shared anyway
+            continue
+        dot = flat.rfind(". ", max(0, m.start() - 200), m.start())
+        s = dot + 2 if dot >= 0 else m.start()
+        # the match itself may start at a "Data availability" heading: cut up to and including it
+        cut = [x.end() for x in re.finditer(r"[a-z]- (?=[A-Z])|(?i:\bdata\s+availability(?:\s+statement)?\s*:?\s*)",
+                                            flat[s:m.end()]) if x.start() <= m.start() - s]
+        if cut: s += cut[-1]
+        e = flat.find(".", m.end())
+        e = e + 1 if 0 <= e < m.end() + 200 else m.end() + 80
+        return flat[s:e].strip()
+    return ""

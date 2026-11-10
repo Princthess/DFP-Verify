@@ -127,6 +127,8 @@ breadcrumbs — just the answer). Columns:
 | `no_data_signal` | the paper says it has no data of its own: the sentence found by pattern search (`stated in paper: "No new data were generated…"`; generic data-policy template phrasings). Empty otherwise |
 | `no_data_llm` | reserved for an LLM's own judgment of the same question, to compare with `no_data_signal`; empty for now |
 | `on_request_signal` | the paper says its data are available on request (`stated in paper: "Data will be made available on request."`): the data exist but are not deposited. Filled for every paper that says it, also papers that deposit some of their data. The sentence must be about giving out data, and not name a repository or identifier (a deposit with access on request is restricted access, i.e. shared) |
+| `supplement_signal` | the paper says its data are in the article or its supplementary files (`stated in paper: "All data is provided within the article and supplementary material …"`). Monitored, **not counted as shared**: a supplement has no DOI of its own and is often a PDF, and journals and FAIR guidance advise a data repository instead (PLOS Open Science Indicators also report supplements separately from repositories). The sentence must say the *data* are in the article / supplement; a bare "supplementary material is available online" (attached to every supplement, figures included) does not count, nor a sentence that also names a repository |
+| `supplement_llm` | the LLM's view of the same thing: names of the items DFP marked as supplementary material (`is_supplementary`). Broader than `supplement_signal` (it also lists supplements of figures or methods), shown side by side for comparison |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections, a no-data statement in a paper that cites own data |
 
 `data_verdict`, in priority order:
@@ -188,7 +190,10 @@ data with DataCite backlinks (SND / Chalmers deposits); "on request" statements 
 (declared in the DAS but unverifiable) · `datacite-only` (linked to the paper in DataCite, not cited in
 it; not counted) · `duplicate` (a web link to a dataset the same paper already cites by DOI, e.g.
 `zenodo.org/records/N` next to `10.5281/zenodo.N`; matched on the link's id-like end against the DOI
-and its DataCite landing page, so no per-repository rules) · `not-data` (registry says cited article)
+and its DataCite landing page, so no per-repository rules) · `homepage` (a link to a repository's
+front page, e.g. `https://snd.gu.se/en`, in a paper that also gives a confirmed record of its own data:
+almost always the repository named next to its record. Only applied when an own record is confirmed, so
+it never changes the verdict; listed on the dashboard's Tool check page) · `not-data` (registry says cited article)
 · `noise` (unverified reference). Detect is
 deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
 

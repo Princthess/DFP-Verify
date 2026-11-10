@@ -140,6 +140,7 @@ N = len(S)
 n_shared = int(S.data_verdict.str.startswith("shared own data").sum())   # open + restricted access
 n_open   = int((S.data_verdict == SHARED).sum())
 n_req    = int((S.on_request_signal != "").sum())                         # "available on request"
+n_supp   = int((S.supplement_signal != "").sum()) if "supplement_signal" in S else 0   # data in article / SI
 
 AREAS = {"1": "Natural sciences", "2": "Engineering & technology", "3": "Medical & health sciences",
          "4": "Agricultural & veterinary sciences", "5": "Social sciences", "6": "Humanities & the arts"}
@@ -198,6 +199,14 @@ dict(value=f"{pct(n_open, N)}  ({n_open})", color="primary")
 dict(value=f"{pct(n_req, N)}  ({n_req})", color="light")
 ```
 
+```{python}
+#| content: valuebox
+#| title: "Say data are in the article or its supplement"
+#| icon: paperclip
+# pattern search (supplement_signal); not counted as shared -- not deposited, no own DOI
+dict(value=f"{pct(n_supp, N)}  ({n_supp})", color="light")
+```
+
 ## Row {height=440px}
 
 ### Column {.tabset}
@@ -217,6 +226,13 @@ _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
                                              dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
 _ = style(fig).update_layout(margin=dict(t=36))
 display(fig)
+# value-box hover (value boxes can't hold extra output; placed by title)
+display(how("The paper says its data are in the article itself or in its supplementary files, for example "
+            "“All data are included in this article and its supplementary information”.<br>"
+            "<b>Not counted as shared</b>: supplements have no DOI of their own and are often PDF files. "
+            "Journals advise a data repository instead.<br>A paper that only says “supplementary material is "
+            "available online” is not counted here: that could be figures, not data.",
+            card="Say data are in the article"))
 how("Each bar is the papers published that year, coloured by result. <b>Percent</b> shows shares "
     "instead of numbers.<br><b>Shares own data</b>: the paper says where the authors' own data is, and "
     "the link works. Open and restricted access (e.g. personal data) both count.<br>"
@@ -421,6 +437,10 @@ for _, r in D[D.status == "likely-unchecked"].iterrows():
 for _, r in D[D.status == "likely-no-doi"].iterrows():
     add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
         "Data statement points to a site, not a record; check by hand")
+for _, r in D[D.status == "homepage"].iterrows():
+    add(G_ID, "Link to a repository's front page (paper also gives its own record)", NAME.get(r.paper, r.paper),
+        r.identifier, "Probably the repository named next to its record, so not counted as a second dataset. "
+        "Check only if the paper has data in two repositories")
 for _, r in C[C.result.str.startswith("not found")].iterrows():
     add(G_TOOLS, "Known dataset not found in the text", r.paper, r.identifier,
         f"DataCite links it and the paper cites it as {r.cited_as}; neither the LLM nor pattern search found it")
@@ -606,7 +626,9 @@ data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "wha
 
 ```{python}
 #| title: "All papers (from summary.csv)"
-T = S[["paper", "year", "data_verdict", "openness", "datasets", "linked_via_datacite_not_in_paper", "field", "note"]]
-T = T.rename(columns={"data_verdict": "verdict", "linked_via_datacite_not_in_paper": "DataCite-only"})
+T = S[["paper", "year", "data_verdict", "openness", "datasets", "linked_via_datacite_not_in_paper", "field",
+       "on_request_signal", "supplement_signal", "note"]]
+T = T.rename(columns={"data_verdict": "verdict", "linked_via_datacite_not_in_paper": "DataCite-only",
+                      "on_request_signal": "on request", "supplement_signal": "in article / supplement"})
 data_tab(T.sort_values(["year", "paper"], ascending=[False, True]), "papers")
 ```

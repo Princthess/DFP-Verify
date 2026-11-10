@@ -19,6 +19,14 @@ CACHE      = os.path.join(os.path.dirname(__file__), ".verify_cache.json")
 
 def stem(s): return os.path.splitext(os.path.basename(str(s).replace("\\", "/")))[0].lower()
 
+def _homepage(url):
+    """A site's front page, not a record: no query, at most one path segment, and no digits in the path
+    ("https://snd.gu.se/en", "https://www.ebi.ac.uk/pride/"). Records carry an id ("…/dataset/2023-205")."""
+    from urllib.parse import urlsplit
+    u = urlsplit(url if "://" in url else "https://" + url)
+    segs = [s for s in u.path.split("/") if s]
+    return not u.query and len(segs) <= 1 and not re.search(r"\d", u.path)
+
 def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     """Run the shared core. Paths resolve: explicit arg > env (DV_TEXT_DIR / DV_DFP_CSV /
     DV_OUT_DIR, e.g. from a .env) > the CONFIG block. So `python run_pipeline.py` works with a
@@ -57,6 +65,11 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         pmeta = paper_meta.setdefault(p, {})
         pmeta["no_data_signal"]    = nodata.signal(nodata.statement(text))    # "no new data were generated"
         pmeta["on_request_signal"] = nodata.signal(nodata.on_request(text))   # "available on request"
+        pmeta["supplement_signal"] = nodata.signal(nodata.supplement(text))   # "data are in the supplement"
+        # the LLM's view of the same thing: DFP rows it marked as supplementary material
+        pmeta["supplement_llm"] = "; ".join(dict.fromkeys(
+            (r.get("name") or r.get("identifier") or "").strip() for r in dfp_by.get(p, [])
+            if str(r.get("is_supplementary", "")).strip().lower() == "true"))
         cands = detect_union.union_detect(text=text, dfp_rows=dfp_by.get(p, []))
         # in-text provenance: locate each id against the DAS / reference / supplement landmarks.
         # DAS region is found by the heading locator; DFP's own source_section also counts.
@@ -131,7 +144,9 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print("  " + " | ".join(f"{k}:{v}" for k, v in fstat.most_common()))
     n_nd = sum(1 for p in per_paper if paper_meta.get(p, {}).get("no_data_signal"))
     n_or = sum(1 for p in per_paper if paper_meta.get(p, {}).get("on_request_signal"))
-    print(f"  data statements: {n_nd} say no data were generated, {n_or} say data are available on request")
+    n_su = sum(1 for p in per_paper if paper_meta.get(p, {}).get("supplement_signal"))
+    print(f"  data statements: {n_nd} say no data were generated, {n_or} say data are available on request, "
+          f"{n_su} say data are in the article / supplement")
 
     # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
     print("STAGE classify:")
@@ -174,8 +189,22 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                                                                            d.get("landing", ""))), None)
                 if hit:
                     c["status"] = "duplicate"; c["verdict"] = f"same record as {hit['identifier']}"; n_dup += 1
+    # A link to a repository's front page ("snd.gu.se/en", "ebi.ac.uk/pride/") is not a record. When the
+    # paper also gives a confirmed record of its OWN data, the link is almost always that repository named
+    # next to its record -- not a second dataset -- so it is marked `homepage` instead of "declared,
+    # unverifiable". Only with a confirmed own record, so it can never change the paper's verdict; the
+    # row stays on the Tool check page under a milder label (a second repository named only by its front
+    # page would still be visible there).
+    n_home = 0
+    for cands in per_paper.values():
+        if not any(c.get("status") == "confirmed" and c.get("provenance") == "own" for c in cands):
+            continue
+        for c in cands:
+            if c.get("kind") == "url" and c.get("status", "").startswith("likely") and _homepage(c["identifier"]):
+                c["status"] = "homepage"; n_home += 1
     print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)"
-          + (f", {n_dup} link(s) merged into a confirmed DOI" if n_dup else ""))
+          + (f", {n_dup} link(s) merged into a confirmed DOI" if n_dup else "")
+          + (f", {n_home} repository front-page link(s) next to an own record" if n_home else ""))
     for cands in per_paper.values():                  # each dataset's own subjects -- cross-check only
         for c in cands:
             if c.get("subjects"): c["subject"] = fields.format_subjects(c["subjects"], fc)

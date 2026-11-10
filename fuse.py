@@ -163,7 +163,11 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "no_data_llm":   pm.get("no_data_llm", ""),
         # filled for every paper that says it, also when it shares other data (partial sharing)
         "on_request_signal": pm.get("on_request_signal", ""),
-        "note":          "; ".join(notes),
+        # "data are in the article / supplement": monitored, not counted as shared (not deposited).
+        # Pattern search + the LLM's own supplementary flag, side by side.
+        "supplement_signal": pm.get("supplement_signal", ""),
+        "supplement_llm":    pm.get("supplement_llm", ""),
+        "note":         "; ".join(notes),
     }
 
 def _placeholder_row(paper, paper_meta):
@@ -270,7 +274,8 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
         w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
                                           "reuses_data", "field", "field_source", "work_type", "no_data_signal",
-                                          "no_data_llm", "on_request_signal", "note"])
+                                          "no_data_llm", "on_request_signal", "supplement_signal",
+                                          "supplement_llm", "note"])
         w.writeheader(); w.writerows(summary_rows)
     with open(os.path.join(out_dir, "per_dataset.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["paper", "identifier", "kind", "source", "registry", "found_in",
