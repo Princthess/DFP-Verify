@@ -322,32 +322,6 @@ data_tab(ex[["paper", "areas", "data_verdict", "field", "field_source"]].rename(
          counts=fa.loc[::-1, fa.sum() > 0].rename(columns=LABEL).rename_axis("ssif_area").reset_index())
 ```
 
-### Column {.tabset}
-
-```{python}
-#| title: "Where own datasets are deposited"
-# repository = the DataCite client that registered the DOI; publisher (in the hover) = the institution
-rp = (OWN.assign(repository=OWN.repository.replace("", "(unknown)"))
-         .groupby("repository").agg(n=("identifier", "size"),
-                                    pubs=("publisher", lambda s: "<br>".join(sorted({p for p in s if p}))))
-         .sort_values("n"))
-fig = go.Figure(go.Bar(y=rp.index, x=rp.n, orientation="h", marker_color=COLOR[SHARED], customdata=rp.pubs,
-                       text=rp.n, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
-                       hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, rp.n.max() * 1.2]), showlegend=False)
-display(fig)
-how("Where the authors' own datasets are stored: the repository that registered the dataset's DOI "
-    "(e.g. SND, Chalmers DORIS, Zenodo). Hover a bar to see the responsible institution. "
-    "Archives without DOIs (e.g. ENA) show the archive.")
-```
-
-```{python}
-#| title: "Data"
-data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "license"]].sort_values(["repository", "paper"]),
-         "repositories", counts=rp.iloc[::-1].reset_index().rename(columns={"n": "datasets", "pubs": "publishers"})
-                                 .assign(publishers=lambda d: d.publishers.str.replace("<br>", "; ")))
-```
-
 ## Row {height=440px}
 
 ### Column {.tabset}
@@ -416,7 +390,7 @@ else:
     display(Markdown("No `field_norm_datasets.csv` yet."))
 ```
 
-# Journals {scrolling="true"}
+# Journals & repositories {scrolling="true"}
 
 ## Row {height=560px}
 
@@ -481,6 +455,41 @@ how("Each bar is one journal: papers with a data availability statement (blue) a
 data_tab(JR[["journal", "paper", "has_das", "data_verdict"]].sort_values(["journal", "paper"]), "journals",
          counts=jt.rename(columns={"yes": "with statement", "no": "without", "n": "papers"})
                   .iloc[::-1].reset_index())
+```
+
+## Row {height=420px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Repositories: own datasets, open and restricted access"
+# repository = the DataCite client that registered the DOI; publisher (in the hover) = the institution.
+# Access from DataCite's access rights (no access right stated = open, as in the pipeline).
+ACCL = {"open": "Open", "restricted": "Restricted access", "": "Access unknown"}
+ACCC = {"open": COLOR[SHARED], "restricted": COLOR[SH_RESTR], "": COLOR[SH_UNK]}
+RO = OWN.assign(repository=OWN.repository.replace("", "(unknown)"),
+                acc=OWN.openness.where(OWN.openness.isin(["open", "restricted"]), ""))
+rt = RO.groupby(["repository", "acc"]).size().unstack(fill_value=0).reindex(columns=list(ACCL), fill_value=0)
+rt = rt.assign(n=rt.sum(axis=1)).sort_values("n")
+pubs = RO.groupby("repository").publisher.agg(lambda s: "<br>".join(sorted({p for p in s if p})) or "–")
+fig = go.Figure()
+for k, lab in ACCL.items():
+    if rt[k].sum():
+        _ = fig.add_bar(y=rt.index, x=rt[k], orientation="h", name=lab, customdata=pubs.reindex(rt.index),
+                        marker=dict(color=ACCC[k], line=dict(color=SURF, width=2)),
+                        hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra>" + lab + "</extra>")
+_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15))
+display(fig)
+how("Where the authors' own datasets are stored: the repository that registered the dataset's DOI "
+    "(e.g. SND, Chalmers DORIS, Zenodo), split by access. <b>Restricted access</b>: deposited, but access "
+    "on conditions (e.g. personal data); still counted as shared.<br>Hover a bar to see the responsible "
+    "institution. Archives without DOIs (e.g. ENA) show the archive.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "license"]].sort_values(["repository", "paper"]),
+         "repositories", counts=rt.rename(columns={**ACCL, "n": "datasets"}).iloc[::-1].reset_index())
 ```
 
 # Tool check {scrolling="true"}
