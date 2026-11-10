@@ -232,117 +232,6 @@ data_tab(ex[["paper", "areas", "data_verdict", "field", "field_source"]].rename(
 ### Column {.tabset}
 
 ```{python}
-#| title: "Papers per publication year, by access to their own data"
-# Paper level, so papers without data stay in the denominator. Access = DataCite rights of the
-# paper's own datasets (summary `openness`): open / restricted (incl. closed, embargoed) / mixed.
-# Colours: access hues are new; orange = DataCite-only and gray = no data, as in the verdict charts.
-ACC = [("open", "Open", "#1baf7a"), ("restricted", "Restricted", "#eda100"),
-       ("mixed", "Mixed (open + restricted)", "#2a78d6"), ("unknown", "Shared, access unknown", COLOR[SH_UNK]),
-       ("onreq", LABEL[ONREQ], COLOR[ONREQ]),
-       ("declared", "Declared, not verifiable", "#8d8b84"), ("reuse", "Reuses data only", "#e87ba4"),
-       ("regonly", "DataCite link only (not counted)", "#eb6834"),
-       ("nogen", LABEL[NOGEN], COLOR[NOGEN]), ("none", LABEL[NONE], COLOR[NONE])]
-ACC_LABEL = {k: l for k, l, _ in ACC}
-def access(r):
-    if r.data_verdict.startswith("shared own data"): return r.openness if r.openness in ("open", "restricted", "mixed") else "unknown"
-    return {DECL: "declared", REUSE: "reuse", REGONLY: "regonly", NOGEN: "nogen",
-            ONREQ: "onreq"}.get(r.data_verdict, "none")
-S["access"] = S.apply(access, axis=1)
-
-def access_bars(fig, df, x, row=None, col=None, seen=None):
-    """Stacked access bars of papers per x, in the fixed ACC order and colours. `seen` (a set) lets
-    small multiples show each category once in the legend, whichever panel it first appears in."""
-    t = df.groupby([x, "access"]).size().unstack(fill_value=0)
-    for rank, (k, name, colr) in enumerate(ACC):
-        if k in t and t[k].sum():
-            show = seen is None or k not in seen
-            if seen is not None: seen.add(k)
-            _ = fig.add_bar(x=t.index, y=t[k], name=name, legendgroup=k, showlegend=show, legendrank=rank,
-                            marker=dict(color=colr, line=dict(color=SURF, width=2)),
-                            hovertemplate="%{x}: %{y} paper(s)<extra>" + name + "</extra>", row=row, col=col)
-    return t
-
-ay = S[S.year != ""]
-fig = go.Figure()
-t_ay = access_bars(fig, ay, "year")
-_ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
-                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
-                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
-                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
-                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
-_ = style(fig).update_layout(margin=dict(t=36))
-fig
-```
-
-```{python}
-#| title: "Data"
-data_tab(ay.assign(access=ay.access.map(ACC_LABEL))[["paper", "year", "access", "data_verdict", "openness", "datasets"]]
-           .sort_values(["year", "paper"]), "papers_per_year_by_access",
-         counts=t_ay.rename(columns=ACC_LABEL).reset_index())
-```
-
-## Row {height=480px}
-
-### Column {.tabset}
-
-```{python}
-#| title: "Sharing by research field and year (share of papers)"
-# Heatmap: SSIF area x year. Cell colour = share of that cell's papers sharing their own data
-# (openly, or open + restricted: button), text = "k/n" papers; hover = the full access breakdown.
-fy = S[S.year != ""].explode("areas")
-area_list = list(fy.groupby("areas").size().sort_values().index)          # most papers on top
-years = sorted(fy.year.unique())
-SHARED_KEYS = ("open", "restricted", "mixed", "unknown")
-def grid(numer):
-    z, txt, hov = [], [], []
-    for a in area_list:
-        zr, tr, hr = [], [], []
-        for y in years:
-            cell = fy[(fy.areas == a) & (fy.year == y)]
-            n = len(cell)
-            if not n:
-                zr.append(None); tr.append(""); hr.append(""); continue
-            k = int(cell.access.isin(numer).sum())
-            zr.append(100 * k / n); tr.append(f"{k}/{n}")
-            hr.append("<br>".join(f"{ACC_LABEL[c]}: {m}" for c, m in cell.access.value_counts().items()))
-        z.append(zr); txt.append(tr); hov.append(hr)
-    return z, txt, hov
-z_open, t_open, h_open = grid(("open",))
-z_any,  t_any,  h_any  = grid(SHARED_KEYS)
-BLUES = [[0, "#cde2fb"], [0.25, "#9ec5f4"], [0.5, "#5598e7"], [0.75, "#256abf"], [1, "#104281"]]
-fig = go.Figure(go.Heatmap(z=z_open, x=years, y=area_list, text=t_open, customdata=h_open,
-                           texttemplate="%{text}", textfont=dict(size=12), colorscale=BLUES, zmin=0, zmax=100,
-                           xgap=3, ygap=3, hoverongaps=False,
-                           colorbar=dict(title=dict(text="% of papers", side="right"), ticksuffix="%",
-                                         thickness=10, len=0.9),
-                           hovertemplate="<b>%{y}, %{x}</b><br>%{text} papers share (%{z:.0f}%)"
-                                         "<br>%{customdata}<extra></extra>"))
-_ = fig.update_layout(updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.02,
-                                        yanchor="bottom",
-                                        showactive=True, bgcolor="white", bordercolor=GRID, font=dict(size=12),
-                                        buttons=[dict(label="Share openly", method="restyle",
-                                                      args=[{"z": [z_open], "text": [t_open], "customdata": [h_open]}]),
-                                                 dict(label="Share (open or restricted)", method="restyle",
-                                                      args=[{"z": [z_any], "text": [t_any], "customdata": [h_any]}])])])
-_ = style(fig).update_layout(margin=dict(t=44), xaxis=dict(type="category", showgrid=False),
-                             yaxis=dict(showgrid=False))                   # blank cell = no papers
-fig
-```
-
-```{python}
-#| title: "Data"
-data_tab(fy.assign(access=fy.access.map(ACC_LABEL))[["areas", "year", "paper", "access", "data_verdict", "field"]]
-           .rename(columns={"areas": "ssif_area"}).sort_values(["ssif_area", "year", "paper"]),
-         "access_by_field_and_year",
-         counts=fy.groupby(["areas", "year", "access"]).size().reset_index(name="papers")
-                  .assign(access=lambda d: d.access.map(ACC_LABEL)).rename(columns={"areas": "ssif_area"}))
-```
-
-## Row {height=380px}
-
-### Column {.tabset}
-
-```{python}
 #| title: "Where own datasets are deposited"
 # repository = the DataCite client that registered the DOI; publisher (in the hover) = the institution
 rp = (OWN.assign(repository=OWN.repository.replace("", "(unknown)"))
@@ -361,44 +250,6 @@ fig
 data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "license"]].sort_values(["repository", "paper"]),
          "repositories", counts=rp.iloc[::-1].reset_index().rename(columns={"n": "datasets", "pubs": "publishers"})
                                  .assign(publishers=lambda d: d.publishers.str.replace("<br>", "; ")))
-```
-
-### Column
-
-```{python}
-#| title: "How to read this"
-Markdown(f"""
-**Shares own data** = the paper itself tells the reader where the authors' own data is, and the
-identifier resolves to a dataset. It is split by access: **open**, or **restricted access**
-(deposited with a DOI and metadata, but access on conditions, e.g. personal data; a paper with some
-open and some restricted datasets is shown as restricted). Restricted data count as shared ("as open
-as possible, as closed as necessary"); data "available on request" without a deposit do not.
-**DataCite link only** = a repository's metadata points to the
-paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
-
-**Field**: the SSIF area is the first digit of the paper's SSIF codes. They come from the paper's
-Swepub record, or, for papers not in Swepub, from Swepub's automatic classifier run on the title and
-abstract (`field_source` = *swepub classify*; on this corpus it agreed with the manual Swepub area
-whenever it made a suggestion). A paper with codes in two areas counts in both, so the field bars can
-add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no abstract). Colours in the field chart follow the legend of the year chart.
-
-**Access** charts count *papers*, so papers without data stay in the picture. *No data generated* =
-the paper itself says it has no data of its own ("no new data were generated", "data sharing not
-applicable"; pattern search, see `no_data_signal`).
-*Own data on request only* = the paper shares no data but says its data are available from the
-authors on request: the data exist but are not deposited, so they don't count as shared. The KPI
-counts every paper with such a sentence, also papers that deposit some of their data.
-*No data found* = everything else without data: not shared, or no data, which the tool can't tell apart.
-Access comes from the DataCite rights of the paper's own datasets; *mixed* = some open, some restricted.
-
-**Repository**: the repository that registered the DOI in DataCite (e.g. SND, Chalmers DORIS,
-SciLifeLab), not the `publisher` field, which names the responsible institution (hover to see it).
-Accessions (ENA, PRIDE …) show the archive.
-
-**Data tab** on each chart: the rows behind it, with CSV downloads of the counts and of the rows.
-Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`
-(and `field_norm.csv` for the DataCite comparison).
-""")
 ```
 
 ## Row {height=440px}
@@ -486,6 +337,44 @@ are not in DataCite and not compared. With few own datasets per area, the bars s
 Refresh with `python field_norm.py` (date in the Data tab, column `fetched`).
 """)
 ```
+
+## Row {height=330px}
+
+```{python}
+#| title: "How to read this"
+Markdown(f"""
+**Shares own data** = the paper itself tells the reader where the authors' own data is, and the
+identifier resolves to a dataset. It is split by access: **open**, or **restricted access**
+(deposited with a DOI and metadata, but access on conditions, e.g. personal data; a paper with some
+open and some restricted datasets is shown as restricted). Restricted data count as shared ("as open
+as possible, as closed as necessary"); data "available on request" without a deposit do not.
+**DataCite link only** = a repository's metadata points to the
+paper, but the paper does not cite the dataset; it is shown but *not counted* as sharing.
+
+**Field**: the SSIF area is the first digit of the paper's SSIF codes. They come from the paper's
+Swepub record, or, for papers not in Swepub, from Swepub's automatic classifier run on the title and
+abstract (`field_source` = *swepub classify*; on this corpus it agreed with the manual Swepub area
+whenever it made a suggestion). A paper with codes in two areas counts in both, so the field bars can
+add up to more than {N}. *No SSIF field* = neither worked (e.g. no DOI, or no abstract). Colours in the field chart follow the legend of the year chart.
+
+**Results** count *papers*, so papers without data stay in the picture. *No data generated* =
+the paper itself says it has no data of its own ("no new data were generated", "data sharing not
+applicable"; pattern search, see `no_data_signal`).
+*Own data on request only* = the paper shares no data but says its data are available from the
+authors on request: the data exist but are not deposited, so they don't count as shared. The KPI
+counts every paper with such a sentence, also papers that deposit some of their data.
+*No data found* = everything else without data: not shared, or no data, which the tool can't tell apart.
+
+**Repository**: the repository that registered the DOI in DataCite (e.g. SND, Chalmers DORIS,
+SciLifeLab), not the `publisher` field, which names the responsible institution (hover to see it).
+Accessions (ENA, PRIDE …) show the archive.
+
+**Data tab** on each chart: the rows behind it, with CSV downloads of the counts and of the rows.
+Source: `{os.path.abspath(OUT)}`. Every number here comes from `summary.csv` / `per_dataset.csv`
+(and `field_norm.csv` for the DataCite comparison).
+""")
+```
+
 
 # Tool check {scrolling="true"}
 
