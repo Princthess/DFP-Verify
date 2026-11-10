@@ -106,6 +106,23 @@ class RegistryCache:
             time.sleep(0.05)
         return self.d[k]
 
+    def journal(self, doi):
+        """Journal (or other container) the paper appeared in, from the DOI's own metadata (CSL
+        `container-title`); '' for reports, preprints and the like."""
+        k = "journal|" + doi.lower()
+        if k not in self.d:
+            try:
+                r = S.get("https://doi.org/" + doi, headers={"Accept": "application/vnd.citationstyles.csl+json"},
+                          timeout=15, allow_redirects=True)
+                if r.status_code != 200: return ""
+                c = r.json().get("container-title") or ""
+                self.d[k] = (c[0] if isinstance(c, list) and c else c if isinstance(c, str) else "").strip()
+            except Exception:
+                return ""                                   # network error: don't cache
+            time.sleep(0.05)
+        import html
+        return html.unescape(self.d[k])                     # "Antennas &amp; Propagation"
+
     def crossref_search(self, head):
         """Top Crossref matches for the first page text -> [(doi, title)]. Only ever used through
         the title check, so a loose search hit can't slip through."""

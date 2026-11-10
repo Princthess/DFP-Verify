@@ -66,6 +66,10 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         pmeta["no_data_signal"]    = nodata.signal(nodata.statement(text))    # "no new data were generated"
         pmeta["on_request_signal"] = nodata.signal(nodata.on_request(text))   # "available on request"
         pmeta["supplement_signal"] = nodata.signal(nodata.supplement(text))   # "data are in the supplement"
+        # does the paper have a data-availability statement? pattern search (heading as written) next to
+        # the LLM's own das_found, compared like the dataset searches
+        pmeta["das_pattern"] = sections.das_heading(text)
+        pmeta["das_llm"] = {"true": "yes", "false": "no"}.get(str(pmeta.get("das_found", "")).strip().lower(), "")
         # the LLM's view of the same thing: DFP rows it marked as supplementary material
         pmeta["supplement_llm"] = "; ".join(dict.fromkeys(
             (r.get("name") or r.get("identifier") or "").strip() for r in dfp_by.get(p, [])
@@ -110,6 +114,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         if st == "unconfirmed" or not doi:
             continue
         pm["year"] = reg.year(doi)                     # publication year (trends over time)
+        pm["journal"] = reg.journal(doi)               # journal name (DAS per journal)
         orcids[p] = reg.paper_orcids(doi)              # paper authors' ORCIDs (own/reused, step 1a)
         ntext_lc, bounds = texts.get(p, ("", {}))
         added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg), text_lc=ntext_lc)

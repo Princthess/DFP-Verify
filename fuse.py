@@ -151,6 +151,11 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "paper":         pm.get("file") or paper,
         "doi":           _paper_doi_cols(pm)["dv_paper_doi"],
         "year":          pm.get("year", ""),
+        "journal":       pm.get("journal", ""),
+        # data-availability statement: yes if either search finds one; both kept for comparison
+        "has_das":       "yes" if (pm.get("das_pattern") or pm.get("das_llm") == "yes") else "no",
+        "das_pattern":   pm.get("das_pattern", ""),
+        "das_llm":       pm.get("das_llm", ""),
         "data_verdict":  _summary_label(own, likely, reused, reg_only,
                                         openness=_own_openness(own_open, own_restr, unknown), no_data=nd,
                                         on_request=pm.get("on_request_signal", ""),
@@ -276,7 +281,8 @@ def fuse(per_paper, paper_meta=None):
 def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "summary.csv"), "w", encoding="utf-8-sig", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "data_verdict", "openness",
+        w = csv.DictWriter(f, fieldnames=["paper", "doi", "year", "journal", "has_das", "das_pattern", "das_llm",
+                                          "data_verdict", "openness",
                                           "datasets", "linked_via_datacite_not_in_paper",
                                           "reuses_data", "field", "field_source", "work_type", "no_data_signal",
                                           "no_data_llm", "on_request_signal", "supplement_signal",

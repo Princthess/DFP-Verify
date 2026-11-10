@@ -72,6 +72,31 @@ def _das_region(text):
     return (m.start(), end)
 
 
+# Paper-level: does the paper have a data-availability statement at all? The line-anchored DAS_HEAD
+# rarely fires on PDF text (columns run together: "Data availabilityDownloaded ..."), so this looks for
+# the heading words written as a heading -- capitalised, followed by a colon/full stop or a new sentence
+# -- anywhere in the flattened text. Prose ("... improves data availability for ...") is lower case
+# and does not match. Generic publisher wordings, not per-journal lists.
+DAS_ANYWHERE = re.compile(
+    r"(?:\b|(?<=[a-z]))(?:"
+    # "Data availability", "Data and model availability statement" (Elsevier Animal), "Data, code and
+    # materials availability"
+    r"Data(?:,?\s+(?:and\s+)?(?:[Cc]ode|[Mm]odels?|[Ss]oftware|[Mm]aterials?))*\s+"
+    r"(?:[Aa]vailability|[Aa]ccessibility|[Aa]ccess)(?:\s+[Ss]tatements?)?"
+    r"|DATA\s+(?:AVAILABILITY|ACCESSIBILITY)(?:\s+STATEMENTS?)?"
+    r"|Availability\s+of\s+(?:[Dd]ata|[Dd]ata\s+and\s+[Mm]aterials?|[Ss]upporting\s+[Dd]ata)"
+    r"|(?:Data|Code)\s+and\s+(?:[Cc]ode|[Dd]ata)\s+[Aa]vailability(?:\s+[Ss]tatements?)?"
+    r"|Open\s+[Rr]esearch(?:\s+[Ss]ection)?"                 # AGU: "Open Research" section
+    # ...then a colon / full stop, a new sentence (also glued on by PDF columns: "availabilityDownloaded"),
+    # or the end of the line (a heading in one column, the other column's text after it)
+    r")(?=\s*[:.]|\s*[A-Z\d]|[ \t]*\r?\n)")
+
+def das_heading(text):
+    """The heading of the paper's data-availability statement as written, or ''."""
+    m = DAS_ANYWHERE.search(text or "")
+    return re.sub(r"\s+", " ", m.group(0)) if m else ""
+
+
 def segment(text, with_das=False):
     """Section landmarks (char offsets into `text`). `text` must be normalize_text()'d.
     with_das=True also locates the DAS region by heading (for the no-ODDPub fallback)."""
