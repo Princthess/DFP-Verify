@@ -83,9 +83,9 @@ class MetaCache:
             except Exception: self.d = {}
     def record(self, doi):
         empty = {"creators": [], "orcids": [], "publisher": "", "repository": "", "license": "", "access": "",
-                 "subjects": [], "url": ""}
+                 "subjects": [], "url": "", "type": ""}
         if not doi: return empty
-        k = "rec5|" + doi.lower()
+        k = "rec6|" + doi.lower()                            # rec6: + resource type (Dataset / Software ...)
         if k not in self.d:
             a = _datacite(doi)
             if a:
@@ -98,14 +98,15 @@ class MetaCache:
                                          for n in c.get("nameIdentifiers") or [] if orcid(n.get("nameIdentifier"))}),
                     "publisher": a.get("publisher") or "", "repository": a.get("_repository") or "",
                     "license": lic, "access": access, "url": a.get("url") or "",   # landing page
-                    "subjects":  dataset_subjects(a)}                # SSIF / FOS, for the field cross-check
+                    "subjects":  dataset_subjects(a),                # SSIF / FOS, for the field cross-check
+                    "type":      (a.get("types") or {}).get("resourceTypeGeneral") or ""}
             else:
                 m = _csl(doi) or {}
                 lic, L = "", m.get("license")
                 if isinstance(L, list) and L:
                     lic = L[0].get("URL", "") if isinstance(L[0], dict) else str(L[0])
                 self.d[k] = {**empty, "creators": _surnames(m), "publisher": m.get("publisher", "") or "",
-                             "license": lic}
+                             "license": lic, "type": "Software" if m.get("type") == "software" else ""}
             time.sleep(0.05)
         return self.d[k]
     def save(self):

@@ -204,7 +204,10 @@ it; not counted) · `duplicate` (a web link to a dataset the same paper already 
 and its DataCite landing page, so no per-repository rules) · `homepage` (a link to a repository's
 front page, e.g. `https://snd.gu.se/en`, in a paper that also gives a confirmed record of its own data:
 almost always the repository named next to its record. Only applied when an own record is confirmed, so
-it never changes the verdict; listed on the dashboard's Tool check page) · `not-data` (registry says cited article)
+it never changes the verdict; listed on the dashboard's Tool check page) · `software` (the registry types the record as Software and the paper's words about it don't mention
+data, e.g. "Source code for: …": code, not data, so not counted and not in the summary. A Software record
+the paper describes as holding data — "All code and associated data files are available from Zenodo",
+typical for GitHub releases on Zenodo — stays `confirmed`) · `not-data` (registry says cited article)
 · `noise` (unverified reference). Detect is
 deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
 

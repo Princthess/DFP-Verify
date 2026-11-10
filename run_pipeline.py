@@ -19,6 +19,9 @@ CACHE      = os.path.join(os.path.dirname(__file__), ".verify_cache.json")
 
 def stem(s): return os.path.splitext(os.path.basename(str(s).replace("\\", "/")))[0].lower()
 
+# "data", "data files", "datasets" -- not "metadata"
+SAYS_DATA = re.compile(r"(?i)(?<!meta)\bdata(?:\s*sets?|\s+files?)?\b|\bdatasets?\b")
+
 def _homepage(url):
     """A site's front page, not a record: no query, at most one path segment, and no digits in the path
     ("https://snd.gu.se/en", "https://www.ebi.ac.uk/pride/"). Records carry an id ("…/dataset/2023-205")."""
@@ -181,6 +184,15 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                 c["publisher"]  = rec.get("publisher", "")
                 c["landing"]    = rec.get("url", "")
                 c["license"]    = rec.get("license") or c.get("license_hint", "")
+                # Code is not data: a DOI the registry types as Software (e.g. a Zenodo "Source code
+                # for: ...") is kept in per_dataset.csv as status `software`, but not counted, not in the
+                # summary and not on the dashboard (user, 2026-11-10: the line is fluid, keep them apart).
+                # The line IS fluid: GitHub releases on Zenodo are always typed Software, also when they
+                # hold the data ("All code and associated data files are available from Zenodo"). So a
+                # Software record still counts as data when the paper's own words about it mention data.
+                if (c["status"] == "confirmed" and rec.get("type") == "Software"
+                        and not SAYS_DATA.search(c.get("evidence") or "")):
+                    c["status"] = "software"
                 n += 1
     meta.save()
     # Datasets DataCite ties to the paper that the paper itself doesn't cite are reported, but NOT
