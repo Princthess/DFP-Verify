@@ -477,10 +477,12 @@ data_tab(RX[["paper", "areas", "reuse_signal", "reuse_llm"]].rename(columns={"ar
 ### Column {.tabset}
 
 ```{python}
-#| title: "Restricted access: own datasets vs their own repositories, by research field"
+#| title: "Open access: own datasets vs what is usual in their repositories, by research field"
 # From field_norm.py (optional): each own DataCite dataset next to the other datasets in ITS repository,
 # in the SSIF area of the citing paper (or the whole repository when the repository sets no subjects or
-# the area is small). Expected = mean of those references over the datasets. Same rules on both sides.
+# the area is small). Usual = mean of those references over the datasets. Same rules on both sides.
+# Shown as % OPEN (= 100 % - restricted; no access right stated = open, as in the pipeline) so that
+# higher = more open, as a bullet chart: bar = own datasets, tick = what is usual in their repositories.
 FN_PATH = os.path.join(OUT, "field_norm_datasets.csv")
 HAVE_NORM = os.path.exists(FN_PATH)
 if HAVE_NORM:
@@ -493,7 +495,7 @@ if HAVE_NORM:
     def refs_text(g):
         c = g.groupby(["repository", "reference"]).size()
         return "<br>".join(f"{r} ({how}): {n}" for (r, how), n in c.items())
-    o, e = dict(y=[], text=[], customdata=[]), dict(y=[], text=[], customdata=[])
+    rows = []
     for gname in groups:
         if gname == ALL_OWN:          # one row per dataset: average its references over its areas
             g = FC.groupby("identifier").agg(restricted=("restricted", "first"),
@@ -502,30 +504,36 @@ if HAVE_NORM:
                                              reference=("reference", "first")).reset_index()
         else:
             g = FC[FC.area_label == gname]
-        k, n = int(g.restricted.sum()), len(g)
-        o["y"].append(100 * k / n); o["text"].append(f"{k}/{n}")
-        o["customdata"].append(f"{k} of {n} own dataset(s)")
-        ev = 100 * g.ref_share_restricted.mean()
-        e["y"].append(ev); e["text"].append(f"{ev:.0f}%")
-        e["customdata"].append("references used (datasets):<br>" + refs_text(g))
-    NAMES = ["Own datasets in these papers", "Expected from their repositories"]
-    fig = go.Figure([go.Bar(x=groups, y=t["y"], text=t["text"], customdata=t["customdata"], name=nm,
-                            marker_color=c, textposition="outside", textfont=dict(color=INK2, size=11),
-                            cliponaxis=False,
-                            hovertemplate="<b>%{x}</b><br>" + nm + ": %{y:.0f}%<br>%{customdata}<extra></extra>")
-                     for t, nm, c in zip([o, e], NAMES, [COLOR[SHARED], "#8d8b84"])])
-    _ = fig.update_layout(barmode="group", bargap=0.3, bargroupgap=0.08)
-    _ = style(fig).update_layout(yaxis=dict(ticksuffix="%", range=[0, 100],
-                                            title=dict(text="% of datasets with restricted access")))
+        n = len(g); k_open = n - int(g.restricted.sum())
+        rows.append(dict(group=gname, own=100 * k_open / n, k=k_open, n=n,
+                         usual=100 * (1 - g.ref_share_restricted.mean()), refs=refs_text(g)))
+    B = pd.DataFrame(rows).iloc[::-1]                                      # first group on top
+    fig = go.Figure()
+    _ = fig.add_bar(y=B.group, x=B.own, orientation="h", name="Own datasets in these papers",
+                    marker=dict(color=COLOR[SHARED]), width=0.45,
+                    text=[f"{k} of {n} open" for k, n in zip(B.k, B.n)], textposition="inside",
+                    insidetextanchor="end", textfont=dict(color="white"),
+                    customdata=B[["k", "n"]].values,
+                    hovertemplate="<b>%{y}</b><br>Own: %{customdata[0]} of %{customdata[1]} open (%{x:.0f}%)<extra></extra>")
+    _ = fig.add_scatter(y=B.group, x=B.usual, mode="markers", name="Usual in their repositories",
+                        marker=dict(symbol="line-ns", size=30, line=dict(width=4, color=INK)),
+                        customdata=B.refs,
+                        hovertemplate="<b>%{y}</b><br>Usual in their repositories: %{x:.0f}% open<br>"
+                                      "references (datasets):<br>%{customdata}<extra></extra>")
+    for _r in B.itertuples():          # the usual value written next to the tick
+        _ = fig.add_annotation(x=_r.usual, y=_r.group, text=f"usual {_r.usual:.0f}%", showarrow=False,
+                               yshift=22, font=dict(size=11, color=INK2))
+    _ = style(fig).update_layout(xaxis=dict(ticksuffix="%", range=[0, 100], title=dict(text="% of datasets openly available")),
+                                 legend=dict(orientation="h", y=-0.2), bargap=0.5)
     display(fig)
-    display(how("Share of datasets with <b>restricted access</b> (e.g. personal data; access on "
-                "application). The rest are open.<br><b>Blue</b>: the datasets in these papers. "
-                "<b>Grey</b>: what is usual in the same repositories, in the same field (all their "
-                "datasets in DataCite; the whole repository if it has no field information). Hover a bar "
-                "to see which.<br>Only fields with at least one own dataset in DataCite are shown, so "
-                "there can be fewer fields than in the research field chart.<br>"
-                "About datasets, not papers. Few datasets per field (k/n): read as "
-                "examples, not trends. Update with <i>python field_norm.py</i>."))
+    display(how("How many of the authors' own datasets are <b>openly available</b>, compared with what is "
+                "usual in the same repositories. <b>Bar</b>: the datasets in these papers. <b>Black tick</b>: "
+                "the share that is open among all other datasets in the same repositories and field (in "
+                "DataCite; the whole repository if it has no field information). Bar past the tick = more open "
+                "than usual there.<br>The rest have <b>restricted access</b> (e.g. personal data, access on "
+                "application). That still counts as sharing, and is often necessary.<br>Only fields with at "
+                "least one own dataset in DataCite are shown. Few datasets per field: read as examples, not "
+                "trends. Update with <i>python field_norm.py</i>."))
 else:
     display(Markdown("No reference yet. Run `python field_norm.py` after the pipeline (asks DataCite, a "
                      "few minutes) to write `field_norm.csv` and `field_norm_datasets.csv`, then render again."))
