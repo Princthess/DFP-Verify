@@ -50,11 +50,26 @@ format:
         }
         // after Quarto/bslib have built the cards (they rearrange the DOM on load)
         window.addEventListener('load', function () { setTimeout(dvHelp, 100); });
+
+        // Count / Percent buttons (Python NORM_BTNS): relayout the stacked chart in the same tab / card
+        document.addEventListener('click', function (e) {
+          var b = e.target.closest('.dv-norm button');
+          if (!b) return;
+          var box = b.closest('.tab-pane') || b.closest('.card');
+          var gd = box && box.querySelector('.js-plotly-plot');
+          if (!gd) return;
+          Plotly.relayout(gd, {barnorm: b.dataset.norm});
+          b.parentElement.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x === b); });
+        });
         </script>
         <style>
         .dv-help-foot { flex: none !important; padding: 2px 12px 6px; font-size: .8rem; }
         .dv-help-link { color: #2a78d6; cursor: help; border-bottom: 1px dotted #2a78d6; }
         .dv-pop { max-width: 440px; font-size: .85rem; }
+        /* Count / Percent: over the chart's top margin, top-left (Plotly's modebar is top-right) */
+        .tab-pane:has(.dv-norm), .card-body:has(.dv-norm) { position: relative; }
+        .dv-norm { position: absolute !important; top: 4px; left: 12px; z-index: 3; display: flex !important; flex-direction: row !important; gap: 4px; width: auto !important; height: auto !important; }
+        .dv-norm .btn { font-size: .75rem; padding: 1px 10px; line-height: 1.4; }
         .dv-pop ul { padding-left: 1.1rem; margin: .3rem 0 0; }
         .bslib-value-box .dv-help-foot { position: absolute; bottom: 2px; right: 8px; padding: 0; z-index: 5; }
         .bslib-value-box.bg-primary .dv-help-link, .bslib-value-box.bg-primary .dv-help-link:hover { color: #fff; }
@@ -130,6 +145,14 @@ def how(html, card=None):
     Keep it short and in plain words: the readers are not all native English speakers."""
     attr = f' data-for="{card}"' if card else ""
     return HTML(f'<div class="dv-help" hidden{attr}>{html}</div>')
+
+# Count / Percent switch for stacked bar charts: plain HTML buttons above the chart (a script in the page
+# header relayouts the chart in the same card). Plotly's own updatemenus buttons lose their text widths
+# when they redraw after a click, so they are not used.
+NORM_BTNS = HTML('<div class="dv-norm">'
+                 '<button type="button" class="btn btn-sm btn-outline-secondary active" data-norm="">Count</button>'
+                 '<button type="button" class="btn btn-sm btn-outline-secondary" data-norm="percent">Percent</button>'
+                 '</div>')
 
 def _csv_link(df, label, filename):
     """A download button with the CSV inlined as a data: URI (BOM so Excel reads UTF-8)."""
@@ -242,13 +265,9 @@ for v in ORDER:
     if v in yr and yr[v].sum():
         _ = fig.add_bar(x=yr.index, y=yr[v], name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
                     hovertemplate="%{x}: %{y} paper(s)<extra>" + LABEL[v] + "</extra>")
-_ = fig.update_layout(barmode="stack", xaxis=dict(type="category"),
-                  updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
-                                    bgcolor="white", bordercolor=GRID, font=dict(size=12),
-                                    buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
-                                             dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = fig.update_layout(barmode="stack", xaxis=dict(type="category"))
 _ = style(fig).update_layout(margin=dict(t=36))
-display(fig)
+display(NORM_BTNS); display(fig)
 # value-box hover (value boxes can't hold extra output; placed by title)
 display(how("The paper says its data are in the article itself or in its supplementary files, for example "
             "“All data are included in this article and its supplementary information”.<br>"
@@ -347,12 +366,9 @@ for v in ORDER:
         _ = fig.add_bar(y=fa.index, x=fa[v], orientation="h", name=LABEL[v],
                     marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
                     hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
-_ = fig.update_layout(barmode="stack",
-                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
-                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
-                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
-                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
+display(NORM_BTNS)
 display(fig)
 how(f"The paper's research field in the Swedish standard <b>SSIF</b>: from the paper's record in "
     f"Swepub, or from Swepub's automatic classifier (title + abstract) when the paper is not in Swepub. "
@@ -454,13 +470,9 @@ for v in ORDER:
         _ = fig.add_bar(y=[f"{DASL[k]} ({int(dv.loc[k].sum())})" for k in dv.index], x=dv[v], orientation="h",
                         name=LABEL[v], marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
                         hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
-_ = fig.update_layout(barmode="stack",
-                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
-                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
-                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
-                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.12, traceorder="normal"))
-display(fig)
+display(NORM_BTNS); display(fig)
 how("Does the paper have a <b>data availability statement</b> (a section that says where the data are, "
     "e.g. “Data availability”, “Data accessibility”, “Availability of data and materials”)? Found by "
     "pattern search on the heading, or by the LLM. Colours as on the Overview page: do papers with a "
