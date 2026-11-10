@@ -347,11 +347,18 @@ for v in ORDER:
         _ = fig.add_bar(y=fa.index, x=fa[v], orientation="h", name=LABEL[v],
                     marker=dict(color=COLOR[v], line=dict(color=SURF, width=2)),
                     hovertemplate="%{y}: %{x} paper(s)<extra>" + LABEL[v] + "</extra>")
-_ = style(fig).update_layout(barmode="stack", showlegend=False)
+_ = fig.update_layout(barmode="stack",
+                      updatemenus=[dict(type="buttons", direction="right", x=0, xanchor="left", y=1.12, showactive=True,
+                                        bgcolor="white", bordercolor=GRID, font=dict(size=12),
+                                        buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
+                                                 dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
+_ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
 display(fig)
 how(f"The paper's research field in the Swedish standard <b>SSIF</b>: from the paper's record in "
     f"Swepub, or from Swepub's automatic classifier (title + abstract) when the paper is not in Swepub. "
-    f"A paper in two fields counts in both, so the bars can add up to more than {N}.<br>"
+    f"A paper in two fields counts in both, so the bars can add up to more than {NB}.<br>"
+    f"<b>Percent</b> shows each field's results as shares of its own papers (small fields: few papers, "
+    f"so a share can jump a lot).<br>"
     f"<b>No SSIF field</b>: no DOI or no abstract. Colours as in the charts above.")
 ```
 
