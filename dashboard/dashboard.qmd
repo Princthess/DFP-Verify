@@ -67,6 +67,10 @@ format:
         .dv-help-link { color: #2a78d6; cursor: help; border-bottom: 1px dotted #2a78d6; }
         .dv-pop { max-width: 440px; font-size: .85rem; }
         .card:has(.dv-context) .card-body { padding: 10px 14px !important; overflow: hidden !important; justify-content: center; }
+        /* value boxes: titles reserve two lines so the numbers line up; smaller numbers leave room for
+           the "How to read" link */
+        .bslib-value-box .value-box-title { min-height: 2.5em; display: flex; align-items: flex-end; margin-bottom: .1rem; }
+        .bslib-value-box .value-box-value { font-size: 2rem !important; line-height: 1.15; }
         .dv-context { font-size: .95rem; color: #52514e; padding: 0 4px; display: block !important; flex: none !important; min-height: 1.6em; line-height: 1.6; }
         /* Count / Percent: over the chart's top margin, top-left (Plotly's modebar is top-right) */
         .tab-pane:has(.dv-norm), .card-body:has(.dv-norm) { position: relative; }
@@ -220,7 +224,7 @@ display(HTML(f'<div class="dv-context"><b>{N}</b> papers analysed'
                 f'were generated)' if n_nogen else "")
              + f' · <b>{len(OWN)}</b> own datasets found. Percentages below are of the {NB} papers.</div>'))
 # value-box hovers (value boxes can't hold extra output; placed by title)
-display(how("<b>Counted as sharing.</b> The paper says where the authors' own data are, and the link works. "
+display(how("<b>Counted as sharing</b> (open or restricted access). The paper says where the authors' own data are, and the link works. "
             "Open and restricted access (e.g. personal data) both count.", card="Share their own data"))
 display(how("<b>Counted as sharing.</b> Of the papers above: the data can be downloaded directly, without "
             "asking.", card="…openly"))
@@ -228,10 +232,10 @@ display(how("<b>Not counted as sharing</b> (a signal). The paper says its data a
             "its supplementary files, e.g. “All data are included in this article and its supplementary "
             "information”. Supplements have no DOI of their own and are often PDF files. A paper that only says "
             "“supplementary material is available online” is not counted: that could be figures, not data. "
-            "Counts every paper that says it, also papers that share other data.", card="Say data are in the article"))
+            "Counts every paper that says it, also papers that share other data.", card="Say data are in article"))
 display(how("<b>Not counted as sharing</b> (a signal). The paper says its data can be asked for, but they "
             "are not stored anywhere. Counts every paper that says it, also papers that share other data.",
-            card="Say data are available on request"))
+            card="Say data are on request"))
 display(how("<b>Not part of the verdict</b> (a signal). The paper uses data from someone else: found by "
             "pattern search (“we use data from two studies”, “publicly available dataset”) <b>or</b> by the "
             "LLM (data it says the authors did not create; software left out). Not verified: most reused "
@@ -242,7 +246,7 @@ display(how("<b>Not part of the verdict</b> (a signal). The paper uses data from
 
 ```{python}
 #| content: valuebox
-#| title: "Share their own data (open or restricted access)"
+#| title: "Share their own data"
 #| icon: database-check
 dict(value=f"{pct(n_shared, NB)}  ({n_shared})", color="primary")
 ```
@@ -256,14 +260,14 @@ dict(value=f"{pct(n_open, NB)}  ({n_open})", color="primary")
 
 ```{python}
 #| content: valuebox
-#| title: "Say data are in the article or its supplement"
+#| title: "Say data are in article / supplement"
 #| icon: paperclip
 dict(value=f"{pct(n_supp, NB)}  ({n_supp})", color="light")
 ```
 
 ```{python}
 #| content: valuebox
-#| title: "Say data are available on request"
+#| title: "Say data are on request"
 #| icon: envelope
 dict(value=f"{pct(n_req, NB)}  ({n_req})", color="light")
 ```
@@ -390,6 +394,82 @@ how(f"The paper's research field in the Swedish standard <b>SSIF</b>: from the p
 data_tab(ex[["paper", "areas", "data_verdict", "field", "field_source"]].rename(columns={"areas": "ssif_area"})
            .sort_values(["ssif_area", "paper"]), "papers_per_field",
          counts=fa.loc[::-1, fa.sum() > 0].rename(columns=LABEL).rename_axis("ssif_area").reset_index())
+```
+
+## Row {height=420px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Licences of own datasets"
+# DataCite rightsList (or the DOI's CSL licence). Versions dropped: "cc-by-4.0" -> "CC BY".
+def lic_family(s):
+    s = (s or "").strip().lower()
+    if not s:                      return "No licence stated"
+    if "cc0" in s or "publicdomain" in s: return "CC0 (public domain)"
+    m = re.search(r"cc[-_ ]?(by(?:[-_ ](?:nc|nd|sa))*)", s) or re.search(r"/licenses/(by(?:-(?:nc|nd|sa))*)/", s)
+    if m:                          return "CC " + m.group(1).upper().replace("_", "-").replace(" ", "-")
+    if re.search(r"gpl|mit|apache|bsd", s): return "Software licence (" + s.split("-")[0].upper() + ")"
+    return "Other"
+LIC = OWN.assign(licence=[lic_family(l) if k == "doi" or l else "Archive without a licence field"
+                          for l, k in zip(OWN.license, OWN.kind)])
+lt = LIC.licence.value_counts().sort_values()
+lrep = LIC.groupby("licence").repository.agg(lambda s: "<br>".join(f"{r}: {n}" for r, n in s.value_counts().items()))
+fig = go.Figure(go.Bar(y=lt.index, x=lt.values, orientation="h", marker_color=SLATE[0],
+                       text=[f"{n}  ({pct(n, len(LIC))})" for n in lt.values], textposition="outside",
+                       textfont=dict(color=INK2), cliponaxis=False,
+                       customdata=lrep.reindex(lt.index),
+                       hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>%{customdata}<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, lt.max() * 1.4]), showlegend=False)
+display(fig)
+how("The licence the repository records for each of the authors' own datasets: the terms for reusing "
+    "them (the “R” in FAIR). <b>CC BY</b> / <b>CC0</b> allow any reuse; <b>NC</b> = non-commercial only, "
+    "<b>ND</b> = no changes. <b>No licence stated</b>: the DOI record has no licence, so it is legally unclear whether the data may be reused. <b>Archive without a licence field</b>: archives without DOIs (e.g. ENA, PRIDE) that this tool cannot read a licence from (they often have one general policy instead).<br>Hover a bar to see the repositories.<br>"
+    "Licence is separate from access: restricted-access data can have a licence, open data can lack one.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(LIC[["paper", "identifier", "repository", "license", "licence", "openness"]].sort_values(["licence", "paper"]),
+         "licences", counts=lt.iloc[::-1].rename_axis("licence").reset_index(name="datasets"))
+```
+
+### Column {.tabset}
+
+```{python}
+#| title: "Papers that reuse others' data, by research field"
+# A signal, not the verdict: the paper says so (pattern search), or only the LLM says so. Verified reuse
+# (a cited dataset with an id that is not the authors' own) is part of the verdict charts instead.
+RU = S[S.verdict.notna()].assign(
+    ru=lambda d: (d.reuse_signal != "").map({True: "stated", False: ""}).where(
+        d.reuse_signal != "", (d.reuse_llm != "").map({True: "llm", False: "none"})))
+RX = RU.explode("areas")
+rt2 = RX.groupby(["areas", "ru"]).size().unstack(fill_value=0).reindex(columns=["stated", "llm", "none"], fill_value=0)
+rt2 = rt2.assign(n=rt2.sum(axis=1)).sort_values(["n"])
+RUL = {"stated": "The paper says so (pattern search)", "llm": "Only the LLM says so",
+       "none": "No sign of reuse"}
+RUC = {"stated": COLOR[REUSE], "llm": "#9fdcc3", "none": "#ecebe6"}
+fig = go.Figure()
+for k in ["stated", "llm", "none"]:
+    _ = fig.add_bar(y=rt2.index, x=rt2[k], orientation="h", name=RUL[k],
+                    marker=dict(color=RUC[k], line=dict(color=SURF, width=2)),
+                    hovertemplate="%{y}: %{x} paper(s)<extra>" + RUL[k] + "</extra>")
+_ = fig.update_layout(barmode="stack")
+_ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15, traceorder="normal"))
+display(NORM_BTNS); display(fig)
+how(f"Papers that use data from someone else (other studies, public databases, benchmarks), per research "
+    f"field. <b>{n_reuse} of {NB}</b> papers this run.<br><b>The paper says so</b>: found by pattern search "
+    "(“we use data from two studies”, “publicly available dataset”). <b>Only the LLM says so</b>: the LLM "
+    "names data the authors did not create (software left out); less certain.<br>Not part of the data "
+    "verdict: reused data are mostly cited without an id, so they can't be verified. A paper can both "
+    "share its own data and reuse others'.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(RX[["paper", "areas", "reuse_signal", "reuse_llm"]].rename(columns={"areas": "ssif_area"})
+           .sort_values(["ssif_area", "paper"]), "reuse",
+         counts=rt2.rename(columns={**RUL, "n": "papers"}).iloc[::-1].rename_axis("ssif_area").reset_index())
 ```
 
 ## Row {height=440px}
@@ -560,39 +640,6 @@ data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "lic
 ```
 
 ## Row {height=400px}
-
-### Column {.tabset}
-
-```{python}
-#| title: "Licences of own datasets"
-# DataCite rightsList (or the DOI's CSL licence). Versions dropped: "cc-by-4.0" -> "CC BY".
-def lic_family(s):
-    s = (s or "").strip().lower()
-    if not s:                      return "No licence stated"
-    if "cc0" in s or "publicdomain" in s: return "CC0 (public domain)"
-    m = re.search(r"cc[-_ ]?(by(?:[-_ ](?:nc|nd|sa))*)", s) or re.search(r"/licenses/(by(?:-(?:nc|nd|sa))*)/", s)
-    if m:                          return "CC " + m.group(1).upper().replace("_", "-").replace(" ", "-")
-    if re.search(r"gpl|mit|apache|bsd", s): return "Software licence (" + s.split("-")[0].upper() + ")"
-    return "Other"
-LIC = OWN.assign(licence=OWN.license.map(lic_family))
-lt = LIC.licence.value_counts().sort_values()
-fig = go.Figure(go.Bar(y=lt.index, x=lt.values, orientation="h", marker_color=SLATE[0],
-                       text=[f"{n}  ({pct(n, len(LIC))})" for n in lt.values], textposition="outside",
-                       textfont=dict(color=INK2), cliponaxis=False,
-                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
-_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, lt.max() * 1.4]), showlegend=False)
-display(fig)
-how("The licence the repository records for each of the authors' own datasets: the terms for reusing "
-    "them (the “R” in FAIR). <b>CC BY</b> / <b>CC0</b> allow any reuse; <b>NC</b> = non-commercial only, "
-    "<b>ND</b> = no changes. <b>No licence stated</b>: legally unclear whether the data may be reused.<br>"
-    "Licence is separate from access: restricted-access data can have a licence, open data can lack one.")
-```
-
-```{python}
-#| title: "Data"
-data_tab(LIC[["paper", "identifier", "repository", "license", "licence", "openness"]].sort_values(["licence", "paper"]),
-         "licences", counts=lt.iloc[::-1].rename_axis("licence").reset_index(name="datasets"))
-```
 
 ### Column {.tabset}
 
