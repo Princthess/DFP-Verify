@@ -697,7 +697,9 @@ rows = []
 def add(group, issue, paper, ident, todo): rows.append(dict(group=group, issue=issue, paper=paper, identifier=ident, todo=todo))
 
 cause = dict(zip(C.identifier, C.broken_id_cause))
-for _, r in D[D.registry.str.startswith("repaired")].iterrows():
+# only ids that matter: counted, declared or DataCite-linked datasets (a repaired reference DOI is noise)
+REL = D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("likely")
+for _, r in D[REL & D.registry.str.startswith("repaired")].iterrows():
     written = r.registry[len("repaired (text had "):-1]
     cs = cause.get(r.identifier, "")
     if cs == "as-printed":
@@ -793,7 +795,7 @@ dict(value=f"{Q.paper.nunique()} of {N}", color="light")
 #| content: valuebox
 #| title: "Broken ids (repaired · dead · no id)"
 #| icon: wrench
-n_rep = int(D.registry.str.startswith("repaired").sum())
+n_rep = int((REL & D.registry.str.startswith("repaired")).sum())
 dict(value=f"{n_rep} · {int((D.status == 'likely-broken-link').sum())} · {int((D.status == 'likely-no-doi').sum())}", color="light")
 ```
 
@@ -908,8 +910,8 @@ how("What the tool is unsure about, by colour:<ul>"
 
 ```{python}
 #| title: "Data"
-data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}),
-         "to_check", counts=qc.iloc[::-1][["group", "issue", "n"]].rename(columns={"n": "rows"}))
+# counts only: the rows themselves are in "To check, row by row" below
+data_tab(qc.iloc[::-1][["group", "issue", "n"]].rename(columns={"n": "rows"}), "to_check_counts")
 ```
 
 ## Row {height=600px}
