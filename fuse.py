@@ -9,7 +9,7 @@ Writes three tables:
                         No DFP-vs-regex breadcrumbs -- just the answer. Read this one.
                         `linked_via_datacite_not_in_paper` lists datasets DataCite ties to the paper
                         that the paper doesn't cite -- reported for transparency, NOT counted as
-                        shared (verdict "no data in paper; dataset linked via DataCite").
+                        shared and not part of the verdict (the verdict is about what the paper says).
   per_dataset.csv    -- one row per candidate, ALL of them incl. regex noise (audit dump).
   merged_output.csv  -- the audit view: DFP's own CSV columns verbatim, plus dv_* columns
                         DFP-Verify adds. A strict superset of a DFP row, so it drops straight
@@ -67,7 +67,6 @@ def _disagreement(c):
 
 # ---- summary.csv: the plain per-paper verdict (the combined answer, no tool breadcrumbs) ----
 
-REG_ONLY_VERDICT = "no data in paper; dataset linked via DataCite"
 NO_DATA_STATED = "no data generated (paper says so)"
 ON_REQUEST = "own data on request only (not shared)"
 IN_SUPPLEMENT = "own data in article / supplement only (not deposited)"
@@ -78,7 +77,9 @@ SHARED_ACCESS = {"open": "open", "restricted": "restricted access", "mixed": "re
 def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on_request="", supplement=""):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
-    DataCite-only links never count as sharing; they only replace a bare 'no data found'.
+    DataCite-only links (reg_only) are not part of the verdict at all: the verdict is about what the
+    paper says, and a registry link is something else. They are reported in their own column and on the
+    dashboard's Tool check page. (Until 2026-11-10 they replaced a bare 'no data found'.)
     A no-data statement (nodata.py: the paper says no data were generated) also only replaces a bare
     'no data found' -- it splits "not shared, or no data" in two.
     "Available on request" (nodata.on_request) means the authors have data but did not deposit it: not
@@ -93,7 +94,6 @@ def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on
     if supplement: return IN_SUPPLEMENT
     if on_request: return ON_REQUEST
     if reused:   return "reuses data only"
-    if reg_only: return REG_ONLY_VERDICT
     if no_data:  return NO_DATA_STATED
     return "no data found"
 

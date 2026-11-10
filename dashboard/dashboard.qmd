@@ -96,7 +96,8 @@ REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "
 NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words
 ONREQ  = "own data on request only (not shared)"  # nodata.on_request: data exist, not deposited
 INSUPP = "own data in article / supplement only (not deposited)"  # nodata.supplement: data in the SI
-ORDER  = [SHARED, SH_RESTR, SH_UNK, INSUPP, ONREQ, REGONLY, REUSE, DECL, NOGEN, NONE]
+# REGONLY is no longer a verdict (DataCite-only links are on Tool check); its colour is still used there
+ORDER  = [SHARED, SH_RESTR, SH_UNK, INSUPP, ONREQ, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
           SH_UNK: "Shares own data: access unknown", INSUPP: "Own data in article / supplement only (not deposited)",
           ONREQ: "Own data on request only (not shared)", REGONLY: "DataCite link only (not counted)",
@@ -276,12 +277,12 @@ how("One result per paper:<ul>"
     "supplementary files, not in a repository. Not counted as shared.</li>"
     "<li><b>On request only</b>: the paper says the data can be asked for, but they are not stored "
     "anywhere. Not counted as shared.</li>"
-    "<li><b>DataCite link only</b>: a dataset's record points to the paper, but the paper does not "
-    "mention it. Not counted.</li>"
     "<li><b>Reuses data only</b>: only other people's data.</li>"
     "<li><b>Declared, not verifiable</b>: the paper mentions data, but the link does not work.</li>"
     "<li><b>No data generated</b>: the paper says it has no data of its own.</li>"
-    "<li><b>No data found</b>: the rest. Not shared, or no data: the tool can't tell which.</li></ul>")
+    "<li><b>No data found</b>: the rest. Not shared, or no data: the tool can't tell which.</li></ul>"
+    "The result is about what the paper says. Datasets that only DataCite links to a paper are on the "
+    "<b>Tool check</b> page.")
 ```
 
 ```{python}

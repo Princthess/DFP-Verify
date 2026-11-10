@@ -151,12 +151,14 @@ breadcrumbs — just the answer). Columns:
 - **`own data on request only (not shared)`** — the paper deposits nothing but says its data are
   available on request (`on_request_signal`). **Not counted as shared.**
 - **`reuses data only`**
-- **`no data in paper; dataset linked via DataCite`** — the paper cites no data, but DataCite links
-  datasets to it. **Not counted as shared**: sharing means the paper tells the reader where its data is.
 - **`no data generated (paper says so)`** — no data found, and `no_data_signal` is set: the paper
   itself says it generated no data ("data sharing is not applicable …").
 - **`no data found`** — everything else without data: not shared, *or* no data; the tool can't tell
   which.
+
+Datasets that DataCite links to the paper but the paper does not cite are **not part of the verdict**:
+the verdict is about what the paper itself says. They are listed in `linked_via_datacite_not_in_paper`
+and in `note`, and on the dashboard's Tool check page.
 
 A dataset id that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a
 DataCite-linked DOI **does** count, with a `note` showing the id as written and the registered DOI.
