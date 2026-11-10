@@ -75,5 +75,7 @@ REUSE_CUE = re.compile(
 
 def clean_doi(d):
     d = re.sub(r"[.,);:>\]]+$", "", d.strip())
-    d = re.sub(r"\.[A-Za-z]{2,}$", "", d)   # strip a trailing glued word, any case (keeps .v3)
+    # strip a trailing glued WORD ("….123.The", "….123.and"), keeps ".v3" and all-caps codes that are part
+    # of the DOI ("10.34658/RDB.UUOQVD", a Dataverse DOI)
+    d = re.sub(r"\.(?:[A-Z][a-z]+|[a-z]{2,})$", "", d)
     return d.lower()

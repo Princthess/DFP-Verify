@@ -715,11 +715,11 @@ for _, r in D[REL & D.registry.str.startswith("repaired")].iterrows():
 for _, r in D[D.status == "likely-broken-link"].iterrows():
     add(G_ID, "Declared link does not resolve", NAME.get(r.paper, r.paper), r.identifier,
         "Check by hand: typo, private/review link, or removed record")
-for _, r in D[D.status == "likely-unchecked"].iterrows():
+for _, r in D[(D.status == "likely-unchecked") & (D.provenance != "reused")].iterrows():
     add(G_ID, "Link could not be checked automatically", NAME.get(r.paper, r.paper), r.identifier,
         "The site blocks automated checks. Open it by hand: does it work, and is it a published "
         "record (not a private or reviewer link)?")
-for _, r in D[D.status == "likely-no-doi"].iterrows():
+for _, r in D[(D.status == "likely-no-doi") & (D.provenance != "reused")].iterrows():
     add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
         "Data statement points to a site, not a record; check by hand")
 for _, r in D[(D.status == "confirmed") & (D.provenance == "unknown")].iterrows():

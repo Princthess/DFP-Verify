@@ -257,7 +257,9 @@ def fuse(per_paper, paper_meta=None):
     for p in sorted(papers):
         cands = per_paper.get(p, [])
         confirmed = [c for c in cands if c.get("status") == "confirmed"]
-        likely    = [c for c in cands if str(c.get("status", "")).startswith("likely")]
+        # declared but unverifiable -- the authors' OWN claim. A link to someone else's data source without
+        # an id (Statistics Sweden, a national open-data portal) is reuse, not an unverifiable own dataset
+        likely    = [c for c in cands if str(c.get("status", "")).startswith("likely") and c.get("provenance") != "reused"]
         reg_only  = [c for c in cands if c.get("status") == "datacite-only"]   # reported, not counted
         own_open  = [c for c in confirmed if c.get("provenance") == "own" and c.get("openness") == "open"]
         own_restr = [c for c in confirmed if c.get("provenance") == "own" and c.get("openness") == "restricted"]

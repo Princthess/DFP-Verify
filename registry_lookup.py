@@ -80,9 +80,12 @@ class RegistryCache:
             try:
                 r = S.get("https://doi.org/" + doi, headers={"Accept": "application/vnd.citationstyles.csl+json"},
                           timeout=15, allow_redirects=True)
+                if r.status_code not in (200, 404, 410):        # rate limit / server error: ask again next run
+                    return ""
                 t = r.json().get("title", "") if r.status_code == 200 else ""
                 if isinstance(t, list): t = t[0] if t else ""
-                self.d[k] = t or ""
+                # markup in titles ("VO<mml:math ...>x</mml:math>/TiO2") would break the word match
+                self.d[k] = re.sub(r"<[^>]+>", "", t or "")
             except Exception:
                 return ""                                   # network error: don't cache, retry next run
             time.sleep(0.05)
@@ -271,11 +274,20 @@ def attach(cands, links, text_lc=""):
     lowercased text, searched for each dataset's landing-page tail. A new candidate cited that way
     carries `_probe` (the matched tail) so the caller can locate it (DAS / body / references)."""
     by_id = {c["identifier"].lower(): c for c in cands if c.get("kind") == "doi"}
+    # the paper may cite another version than the one DataCite links ("…k5p45z33kb.2" vs ".3", Mendeley
+    # Data; "….v1" vs ".v2", figshare): same dataset when only a short version number differs
+    def vbase(x):
+        b = re.sub(r"\.v?\d{1,2}$", "", x)
+        return b if b != x and len(b.rsplit("/", 1)[-1]) >= 6 else x
+    by_base = {}
+    for i, c in by_id.items(): by_base.setdefault(vbase(i), c)
     added = []
     for group in _groups(links):
         ids = group[0]["_group"]
         rel = ",".join(sorted({l["relation"] for l in group}))
         in_text = [by_id[i] for i in ids if i in by_id]
+        if not in_text:
+            in_text = list({id(c): c for c in (by_base.get(vbase(i)) for i in ids) if c}.values())
         if in_text:                                         # already found -- corroborate it
             for c in in_text:
                 c["registry"] = "linked"; c["registry_relation"] = rel
