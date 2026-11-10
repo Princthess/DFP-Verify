@@ -20,10 +20,8 @@ Public API:
   dataset_subjects(datacite_attributes) -> [{"scheme": "ssif"|"fos", "code", "label"}]
   format_subjects(subjects, cache) -> str   (one dataset's subjects, for per_dataset.csv)
 """
-import json, os, re, time, requests
-
-UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
-S = requests.Session(); S.headers.update(UA)
+import json, os, re, time
+from net import S                # shared HTTP session (User-Agent with contact address)
 XSEARCH  = "http://libris.kb.se/xsearch"
 OAIPMH   = "http://api.libris.kb.se/swepub/oaipmh/"
 SUBJECTS = "https://bibliometri.swepub.kb.se/api/v1/info/research-subjects"
@@ -88,7 +86,7 @@ class FieldCache:
         return self._mem[k]
 
     def work_type(self, doi):
-        """OpenAlex work type ('article', 'review', 'editorial', ...), '' if unknown. For nodata.py."""
+        """OpenAlex work type ('article', 'review', 'editorial', ...), '' if unknown. Reported as summary `work_type`."""
         k = "oatype|" + doi.lower()
         if k not in self.d:
             j = self._openalex_work(doi)

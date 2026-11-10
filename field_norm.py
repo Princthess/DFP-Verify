@@ -33,9 +33,9 @@ import csv, datetime, os, re, time, requests
 import config; config.load_env()   # .env before the modules below read DV_CONTACT_EMAIL
 from fields import FieldCache, dataset_subjects
 from classify import _rights
+from net import S                  # shared HTTP session (User-Agent with contact address)
 
 API = "https://api.datacite.org"
-UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
 MIN_AREA = 20          # fewer datasets than this in repository x area -> use the whole repository
 PAGE_LIMIT = 20000     # repositories up to this size are read record by record (sparse fields, 1000/page)
 
@@ -50,7 +50,7 @@ RESTRICTED = ("rightsList.rightsUri:(*restrictedAccess OR *closedAccess OR *emba
 def _get(path, **params):
     for attempt in range(3):
         try:
-            r = requests.get(API + path, headers=UA, params=params, timeout=180)
+            r = S.get(API + path, params=params, timeout=180)
             if r.status_code == 200: return r.json()
             if r.status_code == 404: return None
         except requests.RequestException:
@@ -80,7 +80,7 @@ def counts_by_paging(client, fos_map):
     url, params = API + "/dois", {"client-id": client, "resource-type-id": "dataset", "page[size]": 1000,
                                   "page[cursor]": 1, "fields[dois]": "subjects,rightsList,relatedIdentifiers"}
     while url:
-        j = requests.get(url, headers=UA, params=params, timeout=180).json()
+        j = S.get(url, params=params, timeout=180).json()
         for d in j.get("data", []):
             a = d["attributes"]
             if is_version(a): continue

@@ -19,13 +19,11 @@ openness:
   - a live github/osf/url deposit           -> open
   - else                                     -> unknown
 """
-import json, os, time, re, requests
+import json, os, time, re
 from patterns import OWN_VERBS   # own-provenance verbs ("we submitted/deposited ..."), single source
 from registry_lookup import orcid
 from fields import dataset_subjects
-
-UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
-S = requests.Session(); S.headers.update(UA)
+from net import S                # shared HTTP session (User-Agent with contact address)
 
 def _surnames(meta):
     out = []

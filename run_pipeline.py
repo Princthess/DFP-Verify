@@ -8,7 +8,7 @@ Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; re
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
-import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields, nodata
+import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields, statements
 
 # ----------------------------------- CONFIG -----------------------------------
 TEXT_DIR   = r"path/to/paper_txt"            # folder of per-paper .txt (the regex detector's input)
@@ -66,19 +66,19 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         header[p] = text[:2500]                       # first-page author block (for own/reused)
         heads[p]  = detect_union.normalize_text(text[:6000])   # first page(s), for the paper-DOI check
         pmeta = paper_meta.setdefault(p, {})
-        pmeta["no_data_signal"]    = nodata.signal(nodata.statement(text))    # "no new data were generated"
-        pmeta["on_request_signal"] = nodata.signal(nodata.on_request(text))   # "available on request"
-        pmeta["supplement_signal"] = nodata.signal(nodata.supplement(text))   # "data are in the supplement"
+        pmeta["no_data_signal"]    = statements.signal(statements.statement(text))    # "no new data were generated"
+        pmeta["on_request_signal"] = statements.signal(statements.on_request(text))   # "available on request"
+        pmeta["supplement_signal"] = statements.signal(statements.supplement(text))   # "data are in the supplement"
         # reuse of other people's data: pattern search, next to the LLM's own judgement (DFP rows it says
         # the authors did not create, software left out). A signal only -- the verdict counts verified reuse.
-        pmeta["reuse_signal"] = nodata.signal(nodata.reuse(text))
+        pmeta["reuse_signal"] = statements.signal(statements.reuse(text))
         pmeta["reuse_llm"] = "; ".join(dict.fromkeys(
             (r.get("name") or r.get("identifier") or "").strip() for r in dfp_by.get(p, [])
             if str(r.get("created_by_authors", "")).strip().lower() == "false"
             and str(r.get("is_code", "")).strip().lower() != "true"))
         # does the paper have a data-availability statement? pattern search (heading as written) next to
         # the LLM's own das_found, compared like the dataset searches
-        pmeta["das_pattern"] = sections.das_heading(text)
+        pmeta["das_pattern"] = statements.das_heading(text)
         pmeta["das_llm"] = {"true": "yes", "false": "no"}.get(str(pmeta.get("das_found", "")).strip().lower(), "")
         # the LLM's view of the same thing: DFP rows it marked as supplementary material
         pmeta["supplement_llm"] = "; ".join(dict.fromkeys(

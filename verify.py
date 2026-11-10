@@ -13,12 +13,11 @@ Results are cached to disk (.verify_cache.json) so re-runs are instant.
 Public API:
   verify_candidates(cands, cache_path=...) -> same list, each with a "verdict" field
 """
-import json, os, time, requests
+import json, os, time
 from patterns import ACC_ROUTES   # (archive, anchored regex, check-kind) -- shared with detection
+from net import S                 # shared HTTP session (User-Agent with contact address)
 
-UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
 DATA_TYPES = {"dataset", "software", "collection"}
-S = requests.Session(); S.headers.update(UA)
 
 # Answers that say "a bot check / rate limit stopped us", not "this page doesn't exist": 202 is AWS WAF's
 # JavaScript challenge (figshare, Harvard Dataverse), 403/429/503 are blocks or limits. Only 404/410

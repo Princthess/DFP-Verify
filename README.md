@@ -49,7 +49,11 @@ Candidates are graded by how much the detectors agree:
    files `per_dataset.csv` and `merged_output.csv`.
 
 `sections.py` locates each id (das / body / supplement / references) with a regex heading locator —
-the DAS-membership signal and a cheap provenance nudge.
+the DAS-membership signal and a cheap provenance nudge. `statements.py` finds what the paper itself
+says about its data (no data generated, on request, in the supplement, reuse, the data-availability
+heading) — the `*_signal` / `das_pattern` columns. `patterns.py` holds the identifier patterns shared
+between steps; `net.py` the one HTTP session (User-Agent with your contact address) every registry call
+uses; `selfcheck.py` the recall check against DataCite links.
 
 ## First-time setup
 
@@ -129,11 +133,11 @@ breadcrumbs — just the answer). Columns:
 | `on_request_signal` | the paper says its data are available on request (`stated in paper: "Data will be made available on request."`): the data exist but are not deposited. Filled for every paper that says it, also papers that deposit some of their data. The sentence must be about giving out data, and not name a repository or identifier (a deposit with access on request is restricted access, i.e. shared) |
 | `journal` | the journal the paper appeared in (CSL `container-title` of the paper DOI); blank for reports, blogs, papers without a confirmed DOI |
 | `has_das` | `yes` if the paper has a data availability statement, by either `das_pattern` or `das_llm` |
-| `das_pattern` | the statement's heading as written, found by pattern search (`sections.das_heading`): "Data availability (statement)", "Data accessibility", "Data and model availability statement", "Availability of data and materials", "Open Research" … written as a heading (capitalised, then a colon, a new sentence or a line end), so prose like "improves data availability" does not count |
+| `das_pattern` | the statement's heading as written, found by pattern search (`statements.das_heading`): "Data availability (statement)", "Data accessibility", "Data and model availability statement", "Availability of data and materials", "Open Research" … written as a heading (capitalised, then a colon, a new sentence or a line end), so prose like "improves data availability" does not count |
 | `das_llm` | DFP's own `das_found` (`yes` / `no`). Where the two differ, the dashboard's Tool check lists the paper |
 | `supplement_signal` | the paper says its data are in the article or its supplementary files (`stated in paper: "All data is provided within the article and supplementary material …"`). Monitored, **not counted as shared**: a supplement has no DOI of its own and is often a PDF, and journals and FAIR guidance advise a data repository instead (PLOS Open Science Indicators also report supplements separately from repositories). The sentence must say the *data* are in the article / supplement; a bare "supplementary material is available online" (attached to every supplement, figures included) does not count, nor a sentence that also names a repository |
 | `supplement_llm` | the LLM's view of the same thing: names of the items DFP marked as supplementary material (`is_supplementary`). Broader than `supplement_signal` (it also lists supplements of figures or methods), shown side by side for comparison |
-| `reuse_signal` | the paper says it uses data from elsewhere, by pattern search (`nodata.reuse`): "we use data from two studies", "using data originally reported in …", "data were obtained / downloaded from …" (not from participants, measurements, samples …), "publicly available dataset", "secondary data". A signal only: `reuses_data` / the verdict count verified reuse |
+| `reuse_signal` | the paper says it uses data from elsewhere, by pattern search (`statements.reuse`): "we use data from two studies", "using data originally reported in …", "data were obtained / downloaded from …" (not from participants, measurements, samples …), "publicly available dataset", "secondary data". A signal only: `reuses_data` / the verdict count verified reuse |
 | `reuse_llm` | the LLM's view: names of data DFP says the authors did not create (`created_by_authors` = false), software (`is_code`) left out. Often cited without an id (a benchmark, a public data file), so not verifiable; shown side by side with `reuse_signal` |
 | `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections, a no-data statement in a paper that cites own data |
 

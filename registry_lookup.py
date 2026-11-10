@@ -26,12 +26,10 @@ Public API:
   reverse_links(doi, cache)              -> [link dicts]
   attach(cands, links)                   -> mutates cands in place, returns the new candidates
 """
-import json, os, re, time, requests
+import json, os, re, time
 from urllib.parse import urlparse
 from patterns import DOI_RX, clean_doi
-
-UA = {"User-Agent": f"dfp-verify/0.1 (mailto:{os.environ.get('DV_CONTACT_EMAIL', 'your-contact@example.org')})"}
-S = requests.Session(); S.headers.update(UA)
+from net import S                # shared HTTP session (User-Agent with contact address)
 DATA_TYPES   = {"dataset", "software", "collection"}            # same set as verify.py
 VERSION_RELS = {"hasversion", "isversionof", "isnewversionof", "ispreviousversionof"}
 VERDICT      = "data-verified (DataCite link)"

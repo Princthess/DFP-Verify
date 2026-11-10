@@ -1,19 +1,23 @@
 """
-NO DATA - does the paper say it has no data of its own? Splits "no data found" (not shared, OR no data)
-into a part the paper itself explains.
+STATEMENTS - what the paper itself SAYS about its data, by pattern search. Paper-level signals, each the
+paper's own sentence (summary.csv `*_signal` columns), next to the LLM's view where there is one.
 
-The deterministic half (pattern search). An LLM judgment can be added next to it later (summary column
-`no_data_llm`) and compared, as DFP and the pattern search are compared for datasets.
-  statement(text) -- an explicit sentence such as "No new data were generated", "Data sharing is not
-  applicable to this article". Generic phrasings from data-availability policy templates (Springer
-  Nature, BMC, Wiley, Taylor & Francis, MDPI, Royal Society, Elsevier), not per-journal lists.
-Article type is deliberately NOT a signal: reviews (systematic reviews, meta-analyses) do produce data,
-and OpenAlex's `review` type is partly inferred; editorials, errata etc. are not research articles at
-all, which is a denominator question, not "the paper says it has no data". The type is reported
-separately (summary `work_type`).
-A statement doesn't prove the absence of data, and a paper can say "no new data" and still reuse data --
-reuse wins in the verdict (fuse._summary_label). A paper that says "no data" but cites its own dataset
-is listed on the dashboard's Tool check page.
+  statement(text)  -- "No new data were generated", "Data sharing is not applicable"  -> no_data_signal
+  on_request(text) -- "data are available from the corresponding author on request"   -> on_request_signal
+  supplement(text) -- "all data are included in this article and its supplementary information"
+                                                                                       -> supplement_signal
+  reuse(text)      -- "we use data from two studies", "publicly available dataset"     -> reuse_signal
+  das_heading(text)-- the data-availability statement's heading as written            -> das_pattern
+
+Generic phrasings from publisher data-availability templates and ordinary scientific prose, never
+per-journal or per-database lists. The patterns live here, next to the code that cuts out the sentence,
+because each is used only here (patterns.py holds the identifier patterns shared between steps).
+
+No data: article type is deliberately NOT a signal -- reviews (systematic reviews, meta-analyses) do
+produce data, and OpenAlex's `review` type is partly inferred; editorials, errata etc. are a denominator
+question. A statement doesn't prove the absence of data, and a paper can say "no new data" and still
+reuse data. A paper that says "no data" but cites its own dataset is listed on the dashboard's Tool check.
+An LLM judgment of the same question can be added later (summary column `no_data_llm`).
 """
 import re
 
@@ -171,3 +175,29 @@ def supplement(text):
         e = e + 1 if 0 <= e < m.end() + 200 else m.end() + 80
         return flat[s:e].strip()
     return ""
+
+
+# ---- the data-availability statement's heading -------------------------------------------------
+# Paper-level: does the paper have a data-availability statement at all? The line-anchored DAS_HEAD
+# rarely fires on PDF text (columns run together: "Data availabilityDownloaded ..."), so this looks for
+# the heading words written as a heading -- capitalised, followed by a colon/full stop or a new sentence
+# -- anywhere in the flattened text. Prose ("... improves data availability for ...") is lower case
+# and does not match. Generic publisher wordings, not per-journal lists.
+DAS_ANYWHERE = re.compile(
+    r"(?:\b|(?<=[a-z]))(?:"
+    # "Data availability", "Data and model availability statement" (Elsevier Animal), "Data, code and
+    # materials availability"
+    r"Data(?:,?\s+(?:and\s+)?(?:[Cc]ode|[Mm]odels?|[Ss]oftware|[Mm]aterials?))*\s+"
+    r"(?:[Aa]vailability|[Aa]ccessibility|[Aa]ccess)(?:\s+[Ss]tatements?)?"
+    r"|DATA\s+(?:AVAILABILITY|ACCESSIBILITY)(?:\s+STATEMENTS?)?"
+    r"|Availability\s+of\s+(?:[Dd]ata|[Dd]ata\s+and\s+[Mm]aterials?|[Ss]upporting\s+[Dd]ata)"
+    r"|(?:Data|Code)\s+and\s+(?:[Cc]ode|[Dd]ata)\s+[Aa]vailability(?:\s+[Ss]tatements?)?"
+    r"|Open\s+[Rr]esearch(?:\s+[Ss]ection)?"                 # AGU: "Open Research" section
+    # ...then a colon / full stop, a new sentence (also glued on by PDF columns: "availabilityDownloaded"),
+    # or the end of the line (a heading in one column, the other column's text after it)
+    r")(?=\s*[:.]|\s*[A-Z\d]|[ \t]*\r?\n)")
+
+def das_heading(text):
+    """The heading of the paper's data-availability statement as written, or ''."""
+    m = DAS_ANYWHERE.search(text or "")
+    return re.sub(r"\s+", " ", m.group(0)) if m else ""

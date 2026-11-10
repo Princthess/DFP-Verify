@@ -1,11 +1,13 @@
 """
-patterns.py -- SINGLE SOURCE OF TRUTH for every shared regex and id-registry.
+patterns.py -- SINGLE SOURCE OF TRUTH for every SHARED regex and id-registry.
 
-Nothing that matches identifiers, data-sharing verbs, or data-cue words should be defined anywhere
-else: detect_union (detection), verify (verification) and classify (provenance) all import from
+Nothing that matches identifiers or own-data verbs should be defined anywhere else: detect_union (detection), verify (verification) and classify (provenance) all import from
 here, so a format or word is edited in ONE place and the modules stay in sync. In particular the
 ACCESSIONS registry drives BOTH detection (the union regex) AND verification (archive routing),
 so they can never drift apart.
+Not here: the paper-level statement patterns ("no new data were generated", "available on request" ...).
+Each is used in one place only, next to the code that cuts out the sentence, so they live in
+statements.py.
 
 Pattern sources:
   - DOIs / Swedish-Nordic DataCite prefixes / repo URLs -> our own (public DOI spec + facts).

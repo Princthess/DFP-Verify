@@ -80,14 +80,14 @@ def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on
     DataCite-only links (reg_only) are not part of the verdict at all: the verdict is about what the
     paper says, and a registry link is something else. They are reported in their own column and on the
     dashboard's Tool check page. (Until 2026-11-10 they replaced a bare 'no data found'.)
-    A no-data statement (nodata.py: the paper says no data were generated) also only replaces a bare
+    A no-data statement (statements.py: the paper says no data were generated) also only replaces a bare
     'no data found' -- it splits "not shared, or no data" in two.
-    "Available on request" (nodata.on_request) means the authors have data but did not deposit it: not
+    "Available on request" (statements.on_request) means the authors have data but did not deposit it: not
     shared, but about their OWN data, so it ranks above reuse; shared own data and a declared id win.
     Shared data with restricted access (deposited, access on conditions -- e.g. personal data) still
     counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
     'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed.
-    "Data are in the article / supplement" (nodata.supplement) is the same kind of case -- own data, not
+    "Data are in the article / supplement" (statements.supplement) is the same kind of case -- own data, not
     deposited -- but the reader can download them, so it ranks just above "on request"."""
     if own:      return f"shared own data ({SHARED_ACCESS.get(openness, 'access unknown')})"
     if likely:   return "declared, unverifiable"

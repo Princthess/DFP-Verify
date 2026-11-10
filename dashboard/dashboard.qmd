@@ -115,9 +115,9 @@ SHARED, SH_RESTR, SH_UNK = ("shared own data (open)", "shared own data (restrict
                             "shared own data (access unknown)")
 REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "reuses data only",
                               "declared, unverifiable", "no data found")
-NOGEN  = "no data generated (paper says so)"   # nodata.py: the paper's own words
-ONREQ  = "own data on request only (not shared)"  # nodata.on_request: data exist, not deposited
-INSUPP = "own data in article / supplement only (not deposited)"  # nodata.supplement: data in the SI
+NOGEN  = "no data generated (paper says so)"   # statements.py: the paper's own words
+ONREQ  = "own data on request only (not shared)"  # statements.on_request: data exist, not deposited
+INSUPP = "own data in article / supplement only (not deposited)"  # statements.supplement: data in the SI
 # REGONLY is no longer a verdict (DataCite-only links are on Tool check); its colour is still used there
 ORDER  = [SHARED, SH_RESTR, SH_UNK, INSUPP, ONREQ, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
