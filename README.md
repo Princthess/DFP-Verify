@@ -165,6 +165,10 @@ breadcrumbs — just the answer). Columns:
 - **`reuses data only`**
 - **`no data generated (paper says so)`** — no data found, and `no_data_signal` is set: the paper
   itself says it generated no data ("data sharing is not applicable …").
+- **`cites data, own or reused unclear`** — the paper cites a verified dataset, but no signal says whose
+  it is (no creator metadata or ORCID, no clear own/reuse sentence, no LLM judgement). Not counted as
+  own; listed on Tool check. A sequencing run (ERR…/SRR…) whose study the paper also cites gets that
+  study's own/reused first (ENA says which study a run belongs to).
 - **`no data found`** — everything else without data: not shared, *or* no data; the tool can't tell
   which.
 

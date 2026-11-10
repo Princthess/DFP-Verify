@@ -107,6 +107,23 @@ class MetaCache:
                              "license": lic, "type": "Software" if m.get("type") == "software" else ""}
             time.sleep(0.05)
         return self.d[k]
+    def run_study(self, acc):
+        """The INSDC study (and project) a run / experiment / sample belongs to, from ENA:
+        ERR1995253 -> {'ERP022986', 'PRJEB20178'}. Empty set if unknown. Cached."""
+        k = "study|" + acc.upper()
+        if k not in self.d:
+            try:
+                r = S.get("https://www.ebi.ac.uk/ena/portal/api/filereport",
+                          params={"accession": acc, "result": "read_run", "format": "json",
+                                  "fields": "study_accession,secondary_study_accession"}, timeout=20)
+                rows = r.json() if r.status_code == 200 else []
+                self.d[k] = sorted({v for row in rows for v in (row.get("study_accession"),
+                                                               row.get("secondary_study_accession")) if v})
+            except Exception:
+                return set()                                   # network error: don't cache
+            time.sleep(0.1)
+        return set(self.d[k])
+
     def save(self):
         json.dump(self.d, open(self.path, "w", encoding="utf-8"), ensure_ascii=False)
 

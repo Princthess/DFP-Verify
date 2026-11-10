@@ -195,6 +195,19 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                         and not SAYS_DATA.search(c.get("evidence") or "")):
                     c["status"] = "software"
                 n += 1
+    # A sequencing run with no provenance signal of its own (ERR1995253) belongs to a study; when the paper
+    # also cites that study (ERP022986) and we know whose it is, the run is the same: ENA says which study.
+    n_run = 0
+    for cands in per_paper.values():
+        known = {c["identifier"].upper(): c for c in cands
+                 if c.get("kind") == "accession" and c.get("provenance") in ("own", "reused")}
+        for c in cands:
+            if (c.get("kind") == "accession" and c.get("status") == "confirmed" and c.get("provenance") == "unknown"
+                    and re.match(r"^[EDS]R[RXS]\d", c["identifier"], re.I) and known):
+                hit = next((known[s] for s in meta.run_study(c["identifier"]) if s.upper() in known), None)
+                if hit:
+                    c["provenance"], c["provenance_by"] = hit["provenance"], f"study ({hit['identifier']})"
+                    n_run += 1
     meta.save()
     # Datasets DataCite ties to the paper that the paper itself doesn't cite are reported, but NOT
     # counted as the paper sharing data: sharing = the paper tells the reader where its data is.
@@ -239,7 +252,8 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)"
           + (f", {n_dup} link(s) merged into a confirmed DOI" if n_dup else "")
           + (f", {n_home} repository front-page link(s) next to an own record" if n_home else "")
-          + (f", {n_code} code link(s) (GitHub etc.) not counted as data" if n_code else ""))
+          + (f", {n_code} code link(s) (GitHub etc.) not counted as data" if n_code else "")
+          + (f", {n_run} run(s) given their study's own/reused" if n_run else ""))
     for cands in per_paper.values():                  # each dataset's own subjects -- cross-check only
         for c in cands:
             if c.get("subjects"): c["subject"] = fields.format_subjects(c["subjects"], fc)

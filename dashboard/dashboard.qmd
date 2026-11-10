@@ -117,16 +117,17 @@ REGONLY, REUSE, DECL, NONE = ("no data in paper; dataset linked via DataCite", "
                               "declared, unverifiable", "no data found")
 NOGEN  = "no data generated (paper says so)"   # statements.py: the paper's own words
 ONREQ  = "own data on request only (not shared)"  # statements.on_request: data exist, not deposited
+UNCLR  = "cites data, own or reused unclear"     # a verified dataset; no signal says whose
 INSUPP = "own data in article / supplement only (not deposited)"  # statements.supplement: data in the SI
 # REGONLY is no longer a verdict (DataCite-only links are on Tool check); its colour is still used there
-ORDER  = [SHARED, SH_RESTR, SH_UNK, INSUPP, ONREQ, REUSE, DECL, NOGEN, NONE]
+ORDER  = [SHARED, SH_RESTR, SH_UNK, INSUPP, ONREQ, UNCLR, REUSE, DECL, NOGEN, NONE]
 LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricted access",
           SH_UNK: "Shares own data: access unknown", INSUPP: "Own data in article / supplement only (not deposited)",
-          ONREQ: "Own data on request only (not shared)", REGONLY: "DataCite link only (not counted)",
+          ONREQ: "Own data on request only (not shared)", UNCLR: "Cites data, own or reused unclear", REGONLY: "DataCite link only (not counted)",
           REUSE: "Reuses data only", DECL: "Declared, not verifiable",
           NOGEN: "No data generated (paper says so)", NONE: "No data found (not shared, or no data)"}
 # the two "no data" categories share the gray family; lighter = the paper explains it has none
-COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", ONREQ: "#6250d6", INSUPP: "#c4559f", REGONLY: "#eb6834", REUSE: "#1baf7a",
+COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", ONREQ: "#6250d6", INSUPP: "#c4559f", UNCLR: "#a7c9b8", REGONLY: "#eb6834", REUSE: "#1baf7a",
           DECL: "#eda100", NOGEN: "#dedcd3", NONE: "#b4b2a8"}
 # Colour rule: verdict colours (COLOR) mean the same everywhere -- blue family = shares own data (dark
 # open, light restricted), purple/magenta = own data not deposited, green = reuse, yellow = declared,
@@ -721,6 +722,10 @@ for _, r in D[D.status == "likely-unchecked"].iterrows():
 for _, r in D[D.status == "likely-no-doi"].iterrows():
     add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
         "Data statement points to a site, not a record; check by hand")
+for _, r in D[(D.status == "confirmed") & (D.provenance == "unknown")].iterrows():
+    add(G_TOOLS, "Own or reused unclear", NAME.get(r.paper, r.paper), r.identifier,
+        "Verified dataset, but no signal says whose (no creator metadata or ORCID, no clear sentence, no LLM "
+        "judgement). Not counted as own. Read the sentence around it in the paper")
 for _, r in D[D.status == "likely-wrong-type"].iterrows():
     add(G_ID, "Declared as the paper's data, but the record is not typed as data", NAME.get(r.paper, r.paper),
         r.identifier, f"Registry type: {r.verdict.split('(')[-1].rstrip(')')}. Open it: is it the data (wrong type "

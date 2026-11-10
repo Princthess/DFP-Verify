@@ -70,11 +70,13 @@ def _disagreement(c):
 NO_DATA_STATED = "no data generated (paper says so)"
 ON_REQUEST = "own data on request only (not shared)"
 IN_SUPPLEMENT = "own data in article / supplement only (not deposited)"
+UNCLEAR = "cites data, own or reused unclear"
 
 SHARED_ACCESS = {"open": "open", "restricted": "restricted access", "mixed": "restricted access",
                  "unknown": "access unknown"}
 
-def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on_request="", supplement=""):
+def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on_request="", supplement="",
+                   unclear=()):
     """One per-paper verdict. The authors' own data is the headline question, so it wins;
     a declared-but-dead link ranks above pure reuse (an unverifiable DAS claim is itself a signal).
     DataCite-only links (reg_only) are not part of the verdict at all: the verdict is about what the
@@ -88,9 +90,14 @@ def _summary_label(own, likely, reused, reg_only=(), openness="", no_data="", on
     counts as shared, but the verdict always says so: 'shared own data (restricted access)'.
     'mixed' (some open, some restricted) is labelled restricted access; `openness` says mixed.
     "Data are in the article / supplement" (statements.supplement) is the same kind of case -- own data, not
-    deposited -- but the reader can download them, so it ranks just above "on request"."""
+    deposited -- but the reader can download them, so it ranks just above "on request".
+    A verified dataset whose provenance no signal could settle (`unclear`: no creator metadata, no ORCID,
+    no explicit phrase, no LLM flag) is NOT counted as the authors' own: "cites data, own or reused unclear"
+    -- shown on Tool check. (Before 2026-11-10 it counted as own data with "access unknown", which was
+    wrong twice: it is the provenance that is unknown, not the access.)"""
     if own:      return f"shared own data ({SHARED_ACCESS.get(openness, 'access unknown')})"
     if likely:   return "declared, unverifiable"
+    if unclear:  return UNCLEAR
     if supplement: return IN_SUPPLEMENT
     if on_request: return ON_REQUEST
     if reused:   return "reuses data only"
@@ -117,11 +124,11 @@ def _dataset_cell(confirmed, likely):
     parts += [fmt("declared?", c) for c in likely]
     return "; ".join(parts)
 
-def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reused, likely, reg_only):
+def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reused, likely, reg_only, own_acc_unk=()):
     """reg_only = datasets DataCite ties to the paper but the paper doesn't cite. Listed in their
     own column and NOT counted in the verdict -- the paper itself doesn't share them."""
     pm = (paper_meta or {}).get(paper, {})
-    own = own_open or own_restr or unknown
+    own = own_open or own_restr or own_acc_unk          # provenance-unknown data are NOT own (see _summary_label)
     notes = []
     # surface a dead declared link even when the headline verdict is something else
     if likely and (own or reused):
@@ -157,10 +164,10 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
         "das_pattern":   pm.get("das_pattern", ""),
         "das_llm":       pm.get("das_llm", ""),
         "data_verdict":  _summary_label(own, likely, reused, reg_only,
-                                        openness=_own_openness(own_open, own_restr, unknown), no_data=nd,
+                                        openness=_own_openness(own_open, own_restr, own_acc_unk), no_data=nd,
                                         on_request=pm.get("on_request_signal", ""),
-                                        supplement=pm.get("supplement_signal", "")),
-        "openness":      _own_openness(own_open, own_restr, unknown),
+                                        supplement=pm.get("supplement_signal", ""), unclear=unknown),
+        "openness":      _own_openness(own_open, own_restr, own_acc_unk),
         "datasets":      _dataset_cell(confirmed, likely),
         "linked_via_datacite_not_in_paper": "; ".join(f"{c.get('provenance') or '?'}: {c.get('repository') or 'DataCite'}:"
                                    f"{c['identifier']}" for c in reg_only),
@@ -253,7 +260,9 @@ def fuse(per_paper, paper_meta=None):
         likely    = [c for c in cands if str(c.get("status", "")).startswith("likely")]
         reg_only  = [c for c in cands if c.get("status") == "datacite-only"]   # reported, not counted
         own_open  = [c for c in confirmed if c.get("provenance") == "own" and c.get("openness") == "open"]
-        own_restr = [c for c in confirmed if c.get("provenance") == "own" and c.get("openness") != "open"]
+        own_restr = [c for c in confirmed if c.get("provenance") == "own" and c.get("openness") == "restricted"]
+        own_acc_unk = [c for c in confirmed if c.get("provenance") == "own"
+                       and c.get("openness") not in ("open", "restricted")]   # own, access not known
         reused    = [c for c in confirmed if c.get("provenance") == "reused"]
         unknown   = [c for c in confirmed if c.get("provenance") == "unknown"]
         paper_merged = []
@@ -279,7 +288,7 @@ def fuse(per_paper, paper_meta=None):
                            "likely_unconfirmed": len(likely), "datacite_only": len(reg_only),
                            "n_confirmed": len(confirmed), "n_candidates": len(cands)})
         summary_rows.append(_summary_row(p, paper_meta, confirmed,
-                                         own_open, own_restr, unknown, reused, likely, reg_only))
+                                         own_open, own_restr, unknown, reused, likely, reg_only, own_acc_unk))
     return summary_rows, paper_rows, dataset_rows, merged_rows
 
 def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):

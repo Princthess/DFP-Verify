@@ -35,8 +35,10 @@ DATA_REPO_URL = re.compile(
 # `check` tells verify.py how to confirm the record exists; None = detected but not auto-checked.
 # The archive name + check kind must stay consistent with verify.py's endpoint dispatch.
 ACCESSIONS = [
-    ("GEO",          r"G(?:PL|SM|SE|DS)\d+",     "geo"),         # bioregistry: geo
-    ("SRA",          r"[SED]R[APRSXZ]\d+",       "sra"),         # bioregistry: insdc.sra
+    # GEO: series / samples / datasets. Not GPL: a platform record describes an array design, not data.
+    ("GEO",          r"G(?:SM|SE|DS)\d+",        "geo"),         # bioregistry: geo
+    # INSDC run/experiment/study accessions have at least 6 digits ("SRA3" in prose is not one)
+    ("SRA",          r"[SED]R[APRSXZ]\d{6,}",    "sra"),         # bioregistry: insdc.sra (+ INSDC length)
     ("ENA",          r"PRJ[DEN][A-Z]\d+",        "ena"),         # bioregistry: bioproject
     ("BioSample",    r"SAM[NED]\w?\d+",          "ena"),         # bioregistry: biosample
     ("PRIDE",        r"P[XRA]D\d{6}",            "pride"),       # bioregistry: pride.project

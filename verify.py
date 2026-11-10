@@ -64,7 +64,8 @@ def _check_accession(acc):
             cnt = S.get(u, timeout=15).json().get("esearchresult", {}).get("count", "0"); time.sleep(0.34)
             return "data-verified (GEO)" if cnt not in ("0", None) else "accession-not-found"
         if check == "sra":
-            u = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term={acc}&retmode=json"
+            # exact accession field: a bare term is a free-text search ("SRA3" matched records)
+            u = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term={acc}[Accession]&retmode=json"
             cnt = S.get(u, timeout=15).json().get("esearchresult", {}).get("count", "0"); time.sleep(0.34)
             return "data-verified (SRA)" if cnt not in ("0", None) else "accession-not-found"
         if check == "pride":
