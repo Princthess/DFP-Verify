@@ -27,7 +27,11 @@ Candidates are graded by how much the detectors agree:
    prefixes, accessions, Zenodo / GitHub / OSF / data-repo URLs, split-line repair). Max recall.
 2. **verify** (`verify.py`) — DOI → DataCite type-check, accession → archive API, URL → resolve.
    Only 404/410 count as a dead link; bot protection (e.g. figshare's AWS WAF challenge, HTTP 202) or
-   no answer gives `unchecked link` (status `likely-unchecked`), to open by hand.
+   no answer gives `unchecked link` (status `likely-unchecked`), to open by hand. A DOI is dead only
+   when doi.org says 404/410; a rate limit or server error is retried next run, never cached as dead.
+   An id that is dead as written but resolves without a glued tail (a footnote number or the next
+   word: `bath-00739.28`, `…/tree/main.Rece`) is used without it, noted like a repair.
+   A Zenodo record URL from the LLM is turned into its DOI, as the regex pass already does.
    Deterministic, disk-cached.
 3. **registry links** (`registry_lookup.py`) — the reverse direction: which datasets does DataCite
    tie to *this paper*? The paper DOI is first checked (its record's title must match the first page;
@@ -40,7 +44,9 @@ Candidates are graded by how much the detectors agree:
    repository-specific: what to look for comes from each DataCite record. Disk-cached.
 4. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: ORCID
    overlap between dataset creators and paper authors → creator surnames on the paper's first page
-   → own-verb in the evidence/DAS sentence → DFP's flag → references-location; otherwise `unknown`
+   → an explicit own-data phrase in the evidence/DAS sentence ("we deposited", "generated in this
+   study", "our data"; not when the sentence names an outside source: "obtained from", "provided by")
+   → DFP's flag → references-location; otherwise `unknown`
    (never guessed). Licence and access right (open / restricted) come from the DataCite record;
    a `restrictedAccess` dataset is `restricted`.
    **field** (`fields.py`) — anchors each paper to a research field: its SSIF codes in Swepub (found by
@@ -202,7 +208,10 @@ the PDFs, so set `DV_PDF_DIR` (optional in Version A). A summary also prints aft
 data with DataCite backlinks (SND / Chalmers deposits); "on request" statements are not measured.
 
 **Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
-(declared in the DAS but unverifiable) · `datacite-only` (linked to the paper in DataCite, not cited in
+(declared in the DAS but unverifiable; `likely-wrong-type` = the paper's data statement gives it as its
+data, but the registry types it as something else, e.g. a Zenodo upload typed "Journal article" or an OSF
+project) · `software` also covers declared GitHub / GitLab / Bitbucket links whose description and path
+don't mention data · `datacite-only` (linked to the paper in DataCite, not cited in
 it; not counted) · `duplicate` (a web link to a dataset the same paper already cites by DOI, e.g.
 `zenodo.org/records/N` next to `10.5281/zenodo.N`; matched on the link's id-like end against the DOI
 and its DataCite landing page, so no per-repository rules) · `homepage` (a link to a repository's

@@ -13,7 +13,7 @@ Results are cached to disk (.verify_cache.json) so re-runs are instant.
 Public API:
   verify_candidates(cands, cache_path=...) -> same list, each with a "verdict" field
 """
-import json, os, time
+import json, os, re, time
 from patterns import ACC_ROUTES   # (archive, anchored regex, check-kind) -- shared with detection
 from net import S                 # shared HTTP session (User-Agent with contact address)
 
@@ -42,8 +42,10 @@ def _check_doi(doi):
     try:
         r = S.get("https://doi.org/" + doi, headers={"Accept": "application/vnd.citationstyles.csl+json"},
                   timeout=15, allow_redirects=True)
-        if r.status_code != 200:
+        if r.status_code in DEAD:                       # doi.org: no such DOI
             return "dead/bad DOI"
+        if r.status_code != 200:                        # 429 / 5xx: try again next run, never cache as dead
+            return f"check-error (HTTP {r.status_code})"
         t = r.json().get("type")
         return "data-verified" if t in DATA_TYPES else f"not-data ({t})"
     except Exception:
@@ -75,7 +77,24 @@ def _check_accession(acc):
     except Exception:
         return "check-error"
 
+# Text extraction glues a footnote number or the next word onto an id at the end of a sentence:
+# "bath-00739.28", "github.com/x/y.13", ".../tree/main.Rece(ived)". When the id as written is dead, the
+# same id without that tail is tried -- the registry decides, no list of hosts.
+GLUED_TAIL = re.compile(r"\.(?:\d{1,3}|[A-Z][a-z]{1,12})$")
+
+def _dead(v):
+    return v.startswith(("dead/bad DOI", "dead link", "accession-not-found"))
+
 def _verify_one(ident, kind):
+    v = _verify_one_as_is(ident, kind)
+    m = GLUED_TAIL.search(ident)
+    if _dead(v) and m:
+        v2 = _verify_one_as_is(ident[:m.start()], kind)
+        if not _dead(v2) and not v2.startswith(("check-error", "unchecked")):
+            return f"{v2} [tail '{m.group(0)}' dropped]"
+    return v
+
+def _verify_one_as_is(ident, kind):
     if kind == "doi":        return _check_doi(ident)
     if kind == "accession":  return _check_accession(ident)
     s = _http_status(ident)                                   # code / osf / url
@@ -109,6 +128,13 @@ def verify_candidates(cands, cache_path=".verify_cache.json", progress=True):
     for c in cands:
         k = c["kind"] + "|" + c["identifier"].lower()
         c["verdict"] = fresh.get(k) or cache.get(k, "unchecked")
+        m = re.search(r" \[tail '(.+)' dropped\]$", c["verdict"])
+        if m:                         # use the id without the glued tail; say so like a DataCite repair
+            written = c["identifier"]
+            c["identifier"] = written[:-len(m.group(1))]
+            c["verdict"] = c["verdict"][:m.start()]
+            c.setdefault("registry", "")
+            if not c["registry"]: c["registry"] = f"repaired (text had {written})"
     return cands
 
 def _retry(verdict):

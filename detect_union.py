@@ -66,7 +66,9 @@ def detect_from_dfp(rows):
             v = re.sub(r"[‐-―−]", "-", (r.get(fld) or "").strip())   # fancy dashes, as normalize_text
             if not v: continue
             m = DOI_RX.search(v)
+            z = ZEN_URL.search(v)
             if m:   ident = clean_doi(m.group(0)); kind = "doi"
+            elif z: ident = "10.5281/zenodo." + z.group(1); kind = "doi"   # Zenodo record URL = its DOI, as in detect_regex
             elif ACC_RX.search(v):          ident = ACC_RX.search(v).group(0).upper(); kind = "accession"
             elif v.lower().startswith("http"): ident = v; kind = "url"
             else: continue

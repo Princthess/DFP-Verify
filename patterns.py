@@ -12,7 +12,7 @@ statements.py.
 Pattern sources:
   - DOIs / Swedish-Nordic DataCite prefixes / repo URLs -> our own (public DOI spec + facts).
   - Accession formats -> Bioregistry (bioregistry.io), pattern data CC0 1.0.
-  - OWN_VERBS -> our own short, generic word list.
+  - OWN_VERBS / REUSE_CUE -> our own short, generic phrase lists.
 """
 import re
 
@@ -52,9 +52,24 @@ ACC_RX = re.compile(r"\b(?:" + "|".join(p for _, p, _ in ACCESSIONS) + r")\b", r
 ACC_ROUTES = [(arch, re.compile(r"^(?:" + pat + r")$", re.I), check) for arch, pat, check in ACCESSIONS]
 
 # --- provenance: own-data verbs ("we submitted/deposited ...") ---------------------------------
-OWN_VERBS = re.compile(r"\b(we\s|our\s|this study|present(ed)? (here|in this)|"
-                       r"submitted|deposited|generated|produced|collected|created|"
-                       r"made available by the authors|data are provided)\b", re.I)
+# Explicit only: the authors put the data somewhere, or the data come from THIS study. Bare "we" / "our" /
+# "collected" also occur in reuse sentences ("we obtained data from Statistics Sweden"), so they are not
+# enough on their own (too loose on a 78-paper corpus: external data sources came out as "own").
+OWN_VERBS = re.compile(
+    r"\b(?:we|the\s+authors)\s+(?:have\s+)?(?:deposited|submitted|uploaded|archived|published|released|"
+    r"shared|made\s+(?:\w+\s+){0,3}available)\b"
+    r"|\b(?:generated|collected|produced|created|recorded|measured|acquired|obtained)\s+(?:in|during|for|within|by)\s+"
+    r"(?:this|the\s+(?:present|current))\s+(?:study|work|project|research|paper|article)\b"
+    r"|\b(?:data|datasets?|data\s*sets?)\s+(?:of|from|for|in|underlying|supporting)\s+(?:this|the\s+(?:present|current))\s+"
+    r"(?:study|work|paper|article)\b"
+    r"|\bour\s+(?:data|datasets?|data\s*sets?|raw\s+data|measurements?|recordings?|code\s+and\s+data)\b"
+    r"|\bpresent(?:ed)?\s+(?:here|in\s+this)\b|\bmade\s+available\s+by\s+the\s+authors\b"
+    r"|\b(?:submitted|deposited|uploaded)\s+(?:to|in|at)\b", re.I)
+# ...and a sentence that names an outside source is about reuse, whatever verb it has
+REUSE_CUE = re.compile(
+    r"\b(?:obtained|retrieved|downloaded|sourced|acquired|taken|derived|extracted|accessed)\s+from\b"
+    r"|\b(?:provided|supplied|made\s+available|collected|produced|published)\s+by\b(?!\s+the\s+authors)"
+    r"|\bpublicly\s+available\b|\bthird[-\s]party\b|\bcourtesy\s+of\b", re.I)
 
 def clean_doi(d):
     d = re.sub(r"[.,);:>\]]+$", "", d.strip())

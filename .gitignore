@@ -56,3 +56,4 @@ dashboard/dashboard.html
 dashboard/dashboard_files/
 dashboard/.quarto/
 .quarto/
+dashboard/dashboard_*.html

@@ -8,6 +8,7 @@ Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; re
 """
 import os, re, csv, glob
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
+from patterns import GH_RX
 import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields, statements
 
 # ----------------------------------- CONFIG -----------------------------------
@@ -213,6 +214,15 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                                                                            d.get("landing", ""))), None)
                 if hit:
                     c["status"] = "duplicate"; c["verdict"] = f"same record as {hit['identifier']}"; n_dup += 1
+    # A declared link to a code host (GitHub / GitLab / Bitbucket: the GH_RX pattern detection already
+    # uses) is code, like a Software record: status `software`, not "declared, unverifiable" data --
+    # unless the paper's words about it, or the link itself (".../tree/main/data"), say data.
+    n_code = 0
+    for cands in per_paper.values():
+        for c in cands:
+            if (c.get("status", "").startswith("likely") and GH_RX.search(c["identifier"])
+                    and not SAYS_DATA.search((c.get("evidence") or "") + " " + c["identifier"].split("/", 3)[-1])):
+                c["status"] = "software"; n_code += 1
     # A link to a repository's front page ("snd.gu.se/en", "ebi.ac.uk/pride/") is not a record. When the
     # paper also gives a confirmed record of its OWN data, the link is almost always that repository named
     # next to its record -- not a second dataset -- so it is marked `homepage` instead of "declared,
@@ -228,7 +238,8 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                 c["status"] = "homepage"; n_home += 1
     print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)"
           + (f", {n_dup} link(s) merged into a confirmed DOI" if n_dup else "")
-          + (f", {n_home} repository front-page link(s) next to an own record" if n_home else ""))
+          + (f", {n_home} repository front-page link(s) next to an own record" if n_home else "")
+          + (f", {n_code} code link(s) (GitHub etc.) not counted as data" if n_code else ""))
     for cands in per_paper.values():                  # each dataset's own subjects -- cross-check only
         for c in cands:
             if c.get("subjects"): c["subject"] = fields.format_subjects(c["subjects"], fc)

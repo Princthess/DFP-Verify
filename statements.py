@@ -39,6 +39,22 @@ STATEMENT = re.compile(
     r"|\bthere\s+(?:are|is)\s+no\s+(?:data|datasets?)\s+associated\s+with\b"
     r")")
 
+def _without_refs(text):
+    """The text without its reference list, so a cited title ("'Available upon request': not good enough
+    for microbiome data!") is not read as the paper's own statement. A data-availability statement printed
+    after the references (some journals do) is kept: from its heading, 1500 characters."""
+    import sections
+    text = text or ""
+    r = sections._refs_start(text)
+    if r is None:
+        return text
+    keep = text[:r]
+    m = DAS_ANYWHERE.search(text, r)
+    if m:
+        keep += "\n" + text[m.start():m.start() + 1500]
+    return keep
+
+
 def statement(text):
     """The sentence where the paper says it has no data of its own, or ''. Text is flattened first
     (PDF line breaks, hyphenation) so a sentence split over lines still matches."""
@@ -79,7 +95,7 @@ def on_request(text):
     """The sentence where the paper says its data are available on request, or ''. The sentence must be
     about giving out data (so "models are available from the authors on request" doesn't count) and
     not about a deposit with access on request."""
-    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", _without_refs(text))
     flat = re.sub(r"\s+", " ", flat)
     for m in REQUEST.finditer(flat):
         dot = flat.rfind(". ", max(0, m.start() - 300), m.start())
@@ -128,9 +144,15 @@ SUPPLEMENT = re.compile(
 #   "publicly available data(set)", "data were obtained / retrieved / downloaded from ...",
 #   "we used data from ...", "secondary data".
 # "Data were obtained from the participants / measurements" is the authors' own collection: skipped.
-_OWN_SOURCE = (r"(?:the\s+)?(?:participants?|patients?|subjects?|respondents?|interviews?|informants?|"
+# "data from 2016 to 2022", "from three biological replicates" are a period or a count, not a source
+# ...unless the count is of sources: "data from two studies / three databases" IS reuse
+_OWN_SOURCE = (r"(?:(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|several|multiple|each|all|both)\b"
+               r"(?!\s+(?:\w+\s+){0,2}(?:stud(?:y|ies)|trials?|sources?|databases?|cohorts?|surveys?|registr(?:y|ies)|"
+               r"repositor(?:y|ies)|projects?|datasets?|data\s*sets?|countries|institutions?))|"
+               r"(?:the\s+)?(?:biological|technical|independent)\s+replicates?|"
+               r"(?:the\s+)?(?:participants?|patients?|subjects?|respondents?|interviews?|informants?|"
                r"experiments?|measurements?|simulations?|questionnaires?|surveys?\s+we|our\b|this\s+study|"
-               r"field\s+(?:work|sites?)|samples?|animals?|pigs?|mice|rats?)")
+               r"field\s+(?:work|sites?)|samples?|animals?|pigs?|mice|rats?))")
 REUSE = re.compile(
     r"(?i)(?<!\bour\s)(?<!\bthis\s)\b(?:publicly|openly|freely)\s+available\s+(?:data(?:\s*sets?)?|datasets?|"
     r"databases?|benchmarks?)\b"
@@ -145,7 +167,7 @@ REUSE = re.compile(
 
 def reuse(text):
     """The sentence where the paper says it uses data from elsewhere, or ''."""
-    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", _without_refs(text))
     flat = re.sub(r"\s+", " ", flat)
     for m in REUSE.finditer(flat):
         dot = flat.rfind(". ", max(0, m.start() - 200), m.start())
@@ -160,7 +182,7 @@ def reuse(text):
 
 def supplement(text):
     """The sentence where the paper says its data are in the article or its supplement, or ''."""
-    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", text or "")
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", _without_refs(text))
     flat = re.sub(r"\s+", " ", flat)
     for m in SUPPLEMENT.finditer(flat):
         if DEPOSIT.search(m.group(0)):        # "deposited in Zenodo and included in the SI": shared anyway

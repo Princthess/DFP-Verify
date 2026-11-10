@@ -20,7 +20,7 @@ openness:
   - else                                     -> unknown
 """
 import json, os, time, re
-from patterns import OWN_VERBS   # own-provenance verbs ("we submitted/deposited ..."), single source
+from patterns import OWN_VERBS, REUSE_CUE   # own-provenance verbs / outside-source cues, single source
 from registry_lookup import orcid
 from fields import dataset_subjects
 from net import S                # shared HTTP session (User-Agent with contact address)
@@ -119,7 +119,11 @@ def status(cand):
     A candidate the authors *declared* in the DAS but we couldn't confirm is 'likely', not noise."""
     v = cand.get("verdict", ""); in_das = cand.get("in_das")
     if v.startswith("data-verified"):              return "confirmed"
-    if v.startswith("not-data"):                   return "not-data"     # registry says cited article
+    if v.startswith("not-data"):                                         # registry says not a dataset:
+        # ...but the paper's own data statement points to it as its data (e.g. data uploaded to Zenodo with
+        # the type "Journal article"): declared, so 'likely' -- shown on Tool check, not dropped
+        if in_das and cand.get("created_by_authors") is True:  return "likely-wrong-type"
+        return "not-data"                                                # a cited article
     if in_das:                                                           # declared, but unconfirmed
         if v.startswith("dead") or "not-found" in v: return "likely-broken-link"
         if v.startswith("resolves"):                 return "likely-no-doi"
@@ -152,7 +156,8 @@ def classify(cand, dataset_creators, paper_header, das_text="", found_in="",
         prov, by = overlap, "creator-overlap"          # authoritative; nothing overrides it.
     else:                                              # no creator metadata (e.g. accessions) -> ladder
         # own-verb on ctx (= DFP's evidence sentence, else the DAS window): "we submitted/deposited".
-        if   ctx and OWN_VERBS.search(ctx):            prov, by = "own", "own-verb"
+        if   ctx and OWN_VERBS.search(ctx) and not REUSE_CUE.search(ctx):
+            prov, by = "own", "own-verb"
         elif flag_sig:                                 prov, by = flag_sig, "dfp-flag"
         elif found_in == "references":                 prov, by = "reused", "location"
         else:                                          # every deterministic signal silent

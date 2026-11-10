@@ -719,10 +719,15 @@ for _, r in D[D.status == "likely-unchecked"].iterrows():
 for _, r in D[D.status == "likely-no-doi"].iterrows():
     add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
         "Data statement points to a site, not a record; check by hand")
+for _, r in D[D.status == "likely-wrong-type"].iterrows():
+    add(G_ID, "Declared as the paper's data, but the record is not typed as data", NAME.get(r.paper, r.paper),
+        r.identifier, f"Registry type: {r.verdict.split('(')[-1].rstrip(')')}. Open it: is it the data (wrong type "
+        "in the repository, worth reporting) or another publication?")
 for _, r in D[D.status == "homepage"].iterrows():
-    add(G_ID, "Link to a repository's front page (paper also gives its own record)", NAME.get(r.paper, r.paper),
-        r.identifier, "Probably the repository named next to its record, so not counted as a second dataset. "
-        "Check only if the paper has data in two repositories")
+    add(G_ID, "Link to a website's front page, not a record (paper also gives its own record)",
+        NAME.get(r.paper, r.paper), r.identifier,
+        "Not counted as a dataset. Usually the repository named next to its record, or the source of data "
+        "the authors reused. Check only if the paper has data of its own in a second place")
 for _, r in C[C.result.str.startswith("not found")].iterrows():
     add(G_TOOLS, "Known dataset not found in the text", r.paper, r.identifier,
         f"DataCite links it and the paper cites it as {r.cited_as}; neither the LLM nor pattern search found it")
