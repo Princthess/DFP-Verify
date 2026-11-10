@@ -57,6 +57,13 @@ format:
         .dv-pop { max-width: 440px; font-size: .85rem; }
         .dv-pop ul { padding-left: 1.1rem; margin: .3rem 0 0; }
         .bslib-value-box .dv-help-foot { position: absolute; bottom: 2px; right: 8px; padding: 0; z-index: 5; }
+        /* six value boxes in a row make each < 300px wide, where bslib stacks the icon above the text and
+           the row's fixed height crops it: keep icon left, text right, down to 180px */
+        @container bslib-value-box (max-width: 300px) and (min-width: 180px) {
+          .bslib-value-box:not(.showcase-bottom) .value-box-grid {
+            grid-template-columns: 22% 1fr !important; grid-template-rows: 1fr !important;
+            grid-template-areas: "left right" !important; }
+        }
         </style>
 execute:
   echo: false
