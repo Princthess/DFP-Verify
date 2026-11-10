@@ -120,7 +120,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
     own = own_open or own_restr or unknown
     notes = []
     # surface a dead declared link even when the headline verdict is something else
-    if likely and (own or reused): notes.append(f"{len(likely)} declared id(s) did not resolve")
+    if likely and (own or reused):
+        notes.append(f"{len(likely)} declared link(s) not verified as a dataset (dead, unchecked, or not a record)")
     for c in confirmed:
         if c.get("registry", "").startswith("repaired"):
             written, reg = c["registry"][len("repaired (text had "):-1], c["identifier"]

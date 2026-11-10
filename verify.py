@@ -92,13 +92,27 @@ def verify_candidates(cands, cache_path=".verify_cache.json", progress=True):
     if os.path.exists(cache_path):
         try: cache = json.load(open(cache_path, encoding="utf-8"))
         except Exception: cache = {}
-    uniq = {(c["kind"], c["identifier"].lower()) for c in cands}
-    todo = [k for k in uniq if (k[0] + "|" + k[1]) not in cache]
+    # cache keys are lower case, but the check uses the id as written: archives such as PRIDE and many
+    # URL paths are case-sensitive ("pxd061695" is not found, "PXD061695" is)
+    as_written = {}
+    for c in cands:
+        as_written.setdefault((c["kind"], c["identifier"].lower()), c["identifier"])
+    uniq = set(as_written)
+    todo = [k for k in uniq if (k[0] + "|" + k[1]) not in cache or _retry(cache[k[0] + "|" + k[1]])]
     if progress: print(f"  verify: {len(uniq)} unique, {len(cache)} cached, {len(todo)} to check")
+    fresh = {}
     for i, (kind, ident) in enumerate(todo, 1):
-        cache[kind + "|" + ident] = _verify_one(ident, kind)
+        fresh[kind + "|" + ident] = _verify_one(as_written[(kind, ident)], kind)
         if progress and i % 50 == 0: print(f"    {i}/{len(todo)}")
+    # Only lasting answers are cached. "Not found" / dead / unchecked can change -- data released after
+    # the paper (PRIDE, ENA embargoes), a site that was down or blocked -- so they are asked again next run.
+    cache.update({k: v for k, v in fresh.items() if not _retry(v)})
     json.dump(cache, open(cache_path, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
     for c in cands:
-        c["verdict"] = cache.get(c["kind"] + "|" + c["identifier"].lower(), "unchecked")
+        k = c["kind"] + "|" + c["identifier"].lower()
+        c["verdict"] = fresh.get(k) or cache.get(k, "unchecked")
     return cands
+
+def _retry(verdict):
+    # a malformed DOI string (mostly reference-list fragments) stays malformed, so "dead/bad DOI" is kept
+    return verdict.startswith(("accession-not-found", "dead link", "unchecked", "check-error"))
