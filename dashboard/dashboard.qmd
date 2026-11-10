@@ -106,7 +106,11 @@ LABEL  = {SHARED: "Shares own data: open", SH_RESTR: "Shares own data: restricte
 # the two "no data" categories share the gray family; lighter = the paper explains it has none
 COLOR  = {SHARED: "#2a78d6", SH_RESTR: "#86b6ef", SH_UNK: "#cde2fb", ONREQ: "#6250d6", INSUPP: "#c4559f", REGONLY: "#eb6834", REUSE: "#1baf7a",
           DECL: "#eda100", NOGEN: "#dedcd3", NONE: "#b4b2a8"}
-INK, INK2, GRID, SURF = "#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
+# Colour rule: verdict colours (COLOR) mean the same everywhere -- blue family = shares own data (dark
+# open, light restricted), purple/magenta = own data not deposited, green = reuse, yellow = declared,
+# warm grays = no data. Things that are not verdicts (statements, tool-check groups) use cool slate.
+SLATE = ["#3d4f63", "#7b8ca0", "#c4cdd8"]
+INK, INK2, GRID, SURF ="#0b0b0b", "#52514e", "#e8e7e3", "#fcfcfb"
 
 def style(fig, h=None):
     fig.update_layout(template="plotly_white", font=dict(family="'Source Sans Pro', 'Segoe UI', Arial, sans-serif", size=13, color=INK2),
@@ -412,7 +416,7 @@ _ = fig.update_layout(barmode="stack",
                                         bgcolor="white", bordercolor=GRID, font=dict(size=12),
                                         buttons=[dict(label="Count", method="relayout", args=[{"barnorm": ""}]),
                                                  dict(label="Percent", method="relayout", args=[{"barnorm": "percent"}])])])
-_ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
+_ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.12, traceorder="normal"))
 display(fig)
 how("Does the paper have a <b>data availability statement</b> (a section that says where the data are, "
     "e.g. “Data availability”, “Data accessibility”, “Availability of data and materials”)? Found by "
@@ -437,7 +441,8 @@ JR = S.assign(journal=S.journal.replace("", "(no journal: report, blog …)"))
 jt = JR.groupby(["journal", "has_das"]).size().unstack(fill_value=0).reindex(columns=["yes", "no"], fill_value=0)
 jt = jt.assign(n=jt.sum(axis=1)).sort_values(["n", "yes"]).tail(25)       # the 25 biggest journals
 fig = go.Figure()
-for k, col in [("yes", COLOR[SHARED]), ("no", COLOR[NONE])]:
+# own neutral pair (slate): blue and gray already mean "shares data" / "no data" in the verdict charts
+for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
     _ = fig.add_bar(y=jt.index, x=jt[k], orientation="h", name=DASL[k],
                     marker=dict(color=col, line=dict(color=SURF, width=2)),
                     hovertemplate="%{y}: %{x} paper(s)<extra>" + DASL[k] + "</extra>")
@@ -579,7 +584,8 @@ for _, r in S[(S.das_llm != "") & ((S.das_pattern != "") != (S.das_llm == "yes")
             "Check the paper: which heading does it use? (A new wording could be added to the search.)")
 
 Q = pd.DataFrame(rows, columns=["group", "issue", "paper", "identifier", "todo"])
-GCOL = {G_ID: COLOR[SHARED], G_TOOLS: COLOR[REGONLY], G_PAPER: COLOR[REUSE]}
+# issue groups are not verdicts, so they get neutral slate shades, not verdict colours
+GCOL = {G_ID: SLATE[0], G_TOOLS: SLATE[1], G_PAPER: SLATE[2]}
 ```
 
 ## Row {height=160px}
