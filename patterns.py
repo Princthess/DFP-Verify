@@ -10,7 +10,7 @@ so they can never drift apart.
 Pattern sources:
   - DOIs / Swedish-Nordic DataCite prefixes / repo URLs -> our own (public DOI spec + facts).
   - Accession formats -> Bioregistry (bioregistry.io), pattern data CC0 1.0.
-  - OWN_VERBS / DATA_CUE -> our own short, generic word lists.
+  - OWN_VERBS -> our own short, generic word list.
 """
 import re
 
@@ -53,15 +53,6 @@ ACC_ROUTES = [(arch, re.compile(r"^(?:" + pat + r")$", re.I), check) for arch, p
 OWN_VERBS = re.compile(r"\b(we\s|our\s|this study|present(ed)? (here|in this)|"
                        r"submitted|deposited|generated|produced|collected|created|"
                        r"made available by the authors|data are provided)\b", re.I)
-
-# --- LLM body-scan: broad data-cue net (URLs/DOIs/accessions + a short, generic data vocabulary) -
-DATA_CUE = re.compile(
-    r"https?://\S+"
-    r"|10\.\d{4,}/\S+"
-    r"|\b(?:data|dataset|datasets|code|software|repositor(?:y|ies)|deposit(?:ed|s)?|archiv(?:e|ed)|"
-    r"available|availability|accession|underlying|supplementary|supporting\s+information|"
-    r"made\s+available|openly\s+available|figshare|zenodo|dryad|osf|github|gitlab|genbank|"
-    r"proteomexchange|pride|metabolights|biostudies|arrayexpress)\b", re.I)
 
 def clean_doi(d):
     d = re.sub(r"[.,);:>\]]+$", "", d.strip())

@@ -77,7 +77,6 @@ def _check_accession(acc):
         return "check-error"
 
 def _verify_one(ident, kind):
-    if kind == "mention":    return "no-id mention"          # LLM body-scan, nothing to resolve
     if kind == "doi":        return _check_doi(ident)
     if kind == "accession":  return _check_accession(ident)
     s = _http_status(ident)                                   # code / osf / url

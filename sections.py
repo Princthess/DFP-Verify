@@ -7,14 +7,13 @@ which is all the provenance question needs. We do NOT attempt fine sectioning
 PDF-structure parser (GROBID), which is too heavy for a laptop tool.
 
 Each boundary is one landmark, not a classifier:
-  das         -> ODDPub's extracted DAS text (the validated DAS detector) -- authoritative.
+  das         -> the data-availability heading (DAS_HEAD) and/or DFP's own source_section.
   references  -> the 'References'/'Bibliography' heading in the latter part of the doc.
   supplement  -> a 'Supplementary'/'Supporting information' heading.
   body        -> everything else (where implicit, no-id mentions live).
 
 Why location matters: it is the single best *cheap* provenance signal --
-  references-only -> leans reused (cited);  das/body/supplement -> leans declared/own --
-so it reduces how often the LLM referee has to fire.
+  references-only -> leans reused (cited);  das/body/supplement -> leans declared/own.
 """
 import re
 from detect_union import normalize_text  # noqa: F401  (re-exported for callers)
@@ -61,8 +60,7 @@ def _supp_start(text):
 
 
 def _das_region(text):
-    """(start, end) of the Data Availability section via its heading, or None.
-    Only used as the DAS signal when ODDPub is OFF."""
+    """(start, end) of the Data Availability section via its heading (on its own line), or None."""
     m = DAS_HEAD.search(text)
     if not m:
         return None
@@ -99,7 +97,7 @@ def das_heading(text):
 
 def segment(text, with_das=False):
     """Section landmarks (char offsets into `text`). `text` must be normalize_text()'d.
-    with_das=True also locates the DAS region by heading (for the no-ODDPub fallback)."""
+    with_das=True also locates the DAS region by heading."""
     b = {"refs": _refs_start(text), "supp": _supp_start(text)}
     if with_das:
         b["das"] = _das_region(text)
@@ -136,15 +134,13 @@ def _from_dfp_section(sec):
     return "body"
 
 
-def locate(positions, bounds, in_das=False, dfp_section=""):
+def locate(positions, bounds, dfp_section=""):
     """Return (primary_label, all_labels_set) for one identifier.
 
-    DAS membership comes from ODDPub (`in_das`) when it's on; otherwise from the DAS heading
-    region in `bounds["das"]` and/or DFP's own `source_section`. refs/supplement/body from position.
+    DAS membership from the DAS heading region in `bounds["das"]` (DFP's own `source_section` is
+    added by the caller); refs/supplement/body from position.
     """
     labels = set()
-    if in_das:
-        labels.add("das")
     refs, supp, das = bounds.get("refs"), bounds.get("supp"), bounds.get("das")
     for pos in positions:
         if das is not None and das[0] <= pos < das[1]: labels.add("das")

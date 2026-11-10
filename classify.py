@@ -118,7 +118,6 @@ class MetaCache:
 def status(cand):
     """Confidence bucket for a candidate, using the verify verdict + whether it's in the DAS.
     A candidate the authors *declared* in the DAS but we couldn't confirm is 'likely', not noise."""
-    if cand.get("kind") == "mention":              return "mention"   # LLM found implicit, id-less data
     v = cand.get("verdict", ""); in_das = cand.get("in_das")
     if v.startswith("data-verified"):              return "confirmed"
     if v.startswith("not-data"):                   return "not-data"     # registry says cited article
@@ -129,14 +128,10 @@ def status(cand):
     return "noise"                                                       # not declared + unconfirmed = reference
 
 def _das_window(ident, das_text):
-    """The DAS text around this id (sentence-ish context for the LLM / keyword check)."""
+    """The DAS text around this id (sentence-ish context for the own-verb check)."""
     das = das_text or ""
     i = das.lower().find((ident or "").lower())
     return das[max(0, i - 160):i + 60] if i >= 0 else ""
-
-def _das_says_own(ident, das_text):
-    """Offline fallback: is there an own-verb ('submitted/deposited/...') near this id in the DAS?"""
-    return bool(OWN_VERBS.search(_das_window(ident, das_text)))
 
 def classify(cand, dataset_creators, paper_header, das_text="", found_in="",
              dataset_orcids=(), paper_orcids=(), access=""):

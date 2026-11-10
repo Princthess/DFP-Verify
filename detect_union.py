@@ -11,7 +11,7 @@ Public API:
 Each candidate: {"identifier","kind"(doi/accession/code/osf/url),"source"(llm/regex/both)}
 """
 import re
-from patterns import DOI_RX, ORPHAN_PREFIX, ORPHAN_RX, ZEN_URL, GH_RX, OSF_RX, ACC_RX, DATA_REPO_URL, clean_doi
+from patterns import DOI_RX, ORPHAN_RX, ZEN_URL, GH_RX, OSF_RX, ACC_RX, DATA_REPO_URL, clean_doi
 
 def _tri(v):
     s = str(v).strip().lower()
