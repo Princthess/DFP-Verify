@@ -655,7 +655,30 @@ data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "wha
          "to_check", counts=qc.iloc[::-1][["group", "issue", "n"]].rename(columns={"n": "rows"}))
 ```
 
-## Row {height=150px}
+## Row {height=270px}
+
+```{python}
+#| title: "How the self-check works"
+# selfcheck.csv: datasets DataCite links to a paper AND the paper cites -> a free answer key
+n_dfp = int(C.found_by.str.contains("DFP").sum())
+n_pat = int(C.found_by.str.contains("regex").sum())
+WHY = {"landing page": "the paper gives the dataset's web page, not its DOI",
+       "doi (malformed)": "the dataset link in the text is broken"}
+missed = [f"{NAME.get(str(r.paper).rsplit('.', 1)[0].lower(), r.paper)} ({WHY.get(r.cited_as, r.cited_as)})"
+          for r in C[~C.result.str.startswith("found")].itertuples()]
+Markdown(f"""
+Normally we can't know which datasets a paper *should* have. One exception: the dataset's record in
+DataCite says it belongs to the paper, **and** the paper cites it. Then the right answer is certain,
+so these datasets work as a small test for the two text searches.
+
+**This run:** {len(C)} such datasets. Found {n_found}: DFP {n_dfp}, pattern search {n_pat}.
+{"Missed: " + "; ".join(missed) + "." if missed else "None missed."}
+
+**Limits:** only repositories that record the link back to the paper take part (mostly SND and
+Chalmers DORIS, rarely Zenodo). It shows how often the searches *miss* data, not how often they
+report something that isn't data.
+""")
+```
 
 ```{python}
 #| title: "How to read this"
