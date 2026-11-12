@@ -253,6 +253,20 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                                                                            d.get("landing", ""))), None)
                 if hit:
                     c["status"] = "duplicate"; c["verdict"] = f"same record as {hit['identifier']}"; n_dup += 1
+    # The same dataset cited twice in one paper, once with a version suffix ("…9n29p7rmn5" and
+    # "…9n29p7rmn5.2", Mendeley; ".v1", figshare): one dataset, so the versioned form is a duplicate.
+    def _vbase(x):
+        b = re.sub(r"\.v?\d{1,2}$", "", x.lower())
+        return b if len(b.rsplit("/", 1)[-1]) >= 6 else x.lower()
+    for cands in per_paper.values():
+        conf = [c for c in cands if c.get("status") == "confirmed" and c.get("kind") == "doi"]
+        base = {}
+        for c in sorted(conf, key=lambda c: len(c["identifier"])):          # the shorter (base) form wins
+            b = _vbase(c["identifier"])
+            if b in base and base[b] is not c:
+                c["status"] = "duplicate"; c["verdict"] = f"same dataset as {base[b]['identifier']}"; n_dup += 1
+            else:
+                base.setdefault(b, c)
     # A declared link to a code host (GitHub / GitLab / Bitbucket: the GH_RX pattern detection already
     # uses) is code, like a Software record: status `software`, not "declared, unverifiable" data --
     # unless the paper's words about it, or the link itself (".../tree/main/data"), say data.

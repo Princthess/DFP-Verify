@@ -154,6 +154,11 @@ def main(roagg_csv, out_dir=None):
     path = os.path.join(out_dir, "roagg_compare.csv")
     with open(path, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(out[0]) if out else ["direction"]); w.writeheader(); w.writerows(out)
+    import datetime                                          # what the comparison is based on (for the report)
+    json.dump({"roagg_file": os.path.basename(roagg_csv), "roagg_records": len(rows),
+               "roagg_date": datetime.date.fromtimestamp(os.path.getmtime(roagg_csv)).isoformat(),
+               "org_name": org, "org_ror": ror},
+              open(os.path.join(out_dir, "roagg_info.json"), "w", encoding="utf-8"), indent=1)
     a = [o for o in out if o["direction"] == "own dataset in paper"]
     from collections import Counter
     print(f"RoAgg vs DFP-Verify ({os.path.basename(roagg_csv)}, {len(rows)} RoAgg records)")

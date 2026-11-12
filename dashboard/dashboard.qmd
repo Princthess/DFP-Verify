@@ -721,6 +721,153 @@ data_tab(ZO[["paper", "identifier", "group", "zenodo_community"]].sort_values(["
          counts=zt.iloc[::-1].rename_axis("community").reset_index(name="datasets"))
 ```
 
+# Compared with RoAgg {scrolling="true"}
+
+```{python}
+#| include: false
+# roagg_compare.py (optional) -> roagg_compare.csv + roagg_info.json. Own datasets only. Papers that
+# have no author of the organisation are left out: their datasets are not RoAgg's to find.
+RC_PATH = os.path.join(OUT, "roagg_compare.csv")
+HAVE_RC = os.path.exists(RC_PATH)
+if HAVE_RC:
+    RC = pd.read_csv(RC_PATH, encoding="utf-8-sig", dtype=str).fillna("")
+    try:    RINFO = json.load(open(os.path.join(OUT, "roagg_info.json"), encoding="utf-8"))
+    except Exception: RINFO = {}
+    RC["paper"] = RC.paper.map(lambda k: NAME.get(k, k))
+    RA = RC[(RC.direction == "own dataset in paper") & (RC.paper_is_org != "no")].copy()
+    RB = RC[RC.direction != "own dataset in paper"].copy()
+    n_notorg = int(((RC.direction == "own dataset in paper") & (RC.paper_is_org == "no")).sum())
+    def rstatus(r):
+        if r.in_roagg != "no":                          return "In RoAgg"
+        w = r.why
+        if w.startswith("no organisation"):             return "Not in RoAgg: the dataset's record doesn't name the organisation"
+        if w.startswith("not a DOI"):                   return "Not in RoAgg: archive accession, no DOI"
+        if w.startswith("DOI not in DataCite"):         return "Not in RoAgg: DOI not in DataCite"
+        if w.startswith("record names"):                return "Not in RoAgg, although the record names the organisation"
+        return "Not checked"
+    RA["status"] = RA.apply(rstatus, axis=1)
+    RST = ["In RoAgg", "Not in RoAgg: the dataset's record doesn't name the organisation",
+           "Not in RoAgg, although the record names the organisation",
+           "Not in RoAgg: archive accession, no DOI", "Not in RoAgg: DOI not in DataCite", "Not checked"]
+    RCOL = dict(zip(RST, [SLATE[0], "#d08c4a", "#b5462f", "#e6c79c", "#f1dfc3", "#e2e6ec"]))
+    # what to do, and for whom
+    def todo(r):
+        s = r.status
+        if s.startswith("Not in RoAgg: the dataset's"):
+            return ("Repository metadata", f"Add {ORG or 'the organisation'} (name + ROR) as the creators' affiliation in the record at {r.repository or 'the repository'}")
+        if s.startswith("Not in RoAgg, although"):
+            return ("RoAgg", "The record names the organisation but RoAgg's list lacks it: check RoAgg's matching or harvest date")
+        if s.startswith("Not in RoAgg: archive"):
+            return ("RoAgg", "RoAgg harvests DOIs only: archives without DOIs (ENA, PRIDE …) would need their own source")
+        if s.startswith("Not in RoAgg: DOI not"):
+            return ("RoAgg", "Not a DataCite DOI: RoAgg would need another source for it")
+        return ("", "")
+    RA[["for_whom", "what_to_do"]] = RA.apply(lambda r: pd.Series(todo(r)), axis=1)
+    RB["for_whom"] = "Text search (this tool)"
+    RB["what_to_do"] = RB.why.map(lambda w: "Not counted on purpose: the paper doesn't cite it (rule: the paper must point to its data)"
+                                  if w.startswith("not in the paper") else "Check the paper: how does it cite this dataset?")
+```
+
+## Row {height=160px}
+
+```{python}
+#| content: valuebox
+#| title: "Own datasets in the organisation's papers"
+#| icon: box-seam
+dict(value=len(RA) if HAVE_RC else "–", color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "…also in RoAgg"
+#| icon: check2-circle
+n_in = int((RA.status == "In RoAgg").sum()) if HAVE_RC else 0
+dict(value=f"{pct(n_in, len(RA))}  ({n_in})" if HAVE_RC and len(RA) else "–", color="primary")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Not found by RoAgg"
+#| icon: search
+dict(value=(len(RA) - n_in) if HAVE_RC else "–", color="light")
+```
+
+```{python}
+#| content: valuebox
+#| title: "RoAgg links to the papers, not found in the text"
+#| icon: link-45deg
+dict(value=len(RB) if HAVE_RC else "–", color="light")
+```
+
+## Row {height=480px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Own datasets: does RoAgg find them? By repository"
+if HAVE_RC and len(RA):
+    rt3 = RA.groupby(["repository", "status"]).size().unstack(fill_value=0)
+    rt3 = rt3.reindex(columns=[s for s in RST if s in rt3.columns])
+    rt3 = rt3.loc[rt3.sum(axis=1).sort_values().index]
+    fig = go.Figure()
+    for s in rt3.columns:
+        _ = fig.add_bar(y=rt3.index, x=rt3[s], orientation="h", name=s,
+                        marker=dict(color=RCOL[s], line=dict(color=SURF, width=2)),
+                        hovertemplate="%{y}: %{x} dataset(s)<extra>" + s + "</extra>")
+    _ = style(fig).update_layout(barmode="stack", legend=dict(orientation="h", y=-0.15, traceorder="normal"),
+                                 yaxis=EVERY_LABEL)
+    display(fig)
+    display(how("RoAgg lists what DataCite ties to the organisation (publisher, creator or contributor "
+                f"affiliation, funder). A dataset missing there can't be counted from metadata. Left out: "
+                f"{n_notorg} own dataset(s) of papers with no author of the organisation."))
+    display(how(f"Own datasets of the organisation's papers, found by reading the papers. RoAgg list: "
+                f"{RINFO.get('roagg_file', '?')} ({RINFO.get('roagg_records', '?')} records, "
+                f"{RINFO.get('roagg_date', '?')}).", card="Own datasets in the organisation"))
+    display(how("Most often because the dataset's record has no affiliation to the organisation. See "
+                "the table below.", card="Not found by RoAgg"))
+    display(how("Datasets whose record in DataCite names one of the papers, but which the text search "
+                "doesn't have as the authors' own data.", card="RoAgg links to the papers"))
+else:
+    display(Markdown("No comparison yet. Run RoAgg for the organisation, then `python roagg_compare.py "
+                     "<roagg.csv>` (see README), then render again."))
+```
+
+```{python}
+#| title: "Data"
+if HAVE_RC:
+    display(data_tab(RA[["paper", "identifier", "repository", "status", "roagg_matched_via", "why"]]
+                     .rename(columns={"roagg_matched_via": "RoAgg found it via"}).sort_values(["status", "repository"]),
+                     "roagg_own", counts=RA.groupby(["repository", "status"]).size().reset_index(name="datasets")))
+```
+
+### Column {.tabset}
+
+```{python}
+#| title: "How RoAgg finds them"
+if HAVE_RC and n_in:
+    via = (RA[RA.status == "In RoAgg"].roagg_matched_via.replace("", "(not recorded)")
+           .str.split(", ").explode().value_counts().sort_values())
+    fig = go.Figure(go.Bar(y=via.index, x=via.values, orientation="h", marker_color=SLATE[0],
+                           text=via.values, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
+                           hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
+    _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, via.max() * 1.3]), showlegend=False)
+    display(fig)
+    how("Which field of the dataset's record names the organisation. A dataset can match in several.")
+else:
+    display(Markdown("Nothing to show yet."))
+```
+
+## Row {height=520px}
+
+```{python}
+#| title: "What could improve, and for whom"
+if HAVE_RC:
+    W = pd.concat([RA[RA.for_whom != ""][["for_whom", "paper", "identifier", "repository", "what_to_do"]],
+                   RB[["for_whom", "paper", "identifier", "repository", "what_to_do"]]])
+    W = W.rename(columns={"for_whom": "for", "what_to_do": "what to do"}).sort_values(["for", "repository", "paper"])
+    display(data_tab(W, "roagg_improve"))
+```
+
 # Tool check {scrolling="true"}
 
 ```{python}
