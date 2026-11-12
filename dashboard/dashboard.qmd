@@ -236,22 +236,15 @@ display(HTML(f'<div class="dv-context">{RUN_LINE}<br><b>{N}</b> papers analysed'
                 f'were generated)' if n_nogen else "")
              + f' · <b>{len(OWN)}</b> own datasets found. Percentages below are of the {NB} papers.</div>'))
 # value-box hovers (value boxes can't hold extra output; placed by title)
-display(how("<b>Counted as sharing</b> (open or restricted access). The paper says where the authors' own data are, and the link works. "
-            "Open and restricted access (e.g. personal data) both count.", card="Share their own data"))
-display(how("<b>Counted as sharing.</b> Of the papers above: the data can be downloaded directly, without "
-            "asking.", card="…openly"))
-display(how("<b>Not counted as sharing</b> (a signal). The paper says its data are in the article itself or in "
-            "its supplementary files, e.g. “All data are included in this article and its supplementary "
-            "information”. Supplements have no DOI of their own and are often PDF files. A paper that only says "
-            "“supplementary material is available online” is not counted: that could be figures, not data. "
-            "Counts every paper that says it, also papers that share other data.", card="Say data are in article"))
-display(how("<b>Not counted as sharing</b> (a signal). The paper says its data can be asked for, but they "
-            "are not stored anywhere. Counts every paper that says it, also papers that share other data.",
-            card="Say data are on request"))
-display(how("<b>Not part of the verdict</b> (a signal). The paper uses data from someone else: found by "
-            "pattern search (“we use data from two studies”, “publicly available dataset”) <b>or</b> by the "
-            "LLM (data it says the authors did not create; software left out). Not verified: most reused "
-            "data are cited without an id. Both are in the Papers table.", card="Say they reuse"))
+display(how("<b>Counted as sharing.</b> The paper says where its own data are, and the link works. Open or "
+            "restricted access.", card="Share their own data"))
+display(how("<b>Counted as sharing.</b> Own data anyone can download directly.", card="…openly"))
+display(how("<b>Not counted as sharing.</b> The paper says its data are in the article or its supplementary "
+            "files (no DOI, often PDF). Counts every paper that says so.", card="Say data are in article"))
+display(how("<b>Not counted as sharing.</b> The paper says its data can be asked for. Counts every paper that "
+            "says so.", card="Say data are on request"))
+display(how("<b>Not part of the result.</b> The paper uses data from others, found by pattern search or the "
+            "LLM. Not verified.", card="Say they reuse"))
 ```
 
 ## Row {height=150px}
@@ -306,10 +299,7 @@ for v in ORDER:
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"))
 _ = style(fig).update_layout(margin=dict(t=36))
 display(NORM_BTNS); display(fig)
-how("Each bar is the papers published that year, coloured by result. <b>Percent</b> shows shares "
-    "instead of numbers.<br><b>Shares own data</b>: the paper says where the authors' own data is, and "
-    "the link works. Open and restricted access (e.g. personal data) both count.<br>"
-    "The <b>Data</b> tab has the rows behind the chart, also as CSV.")
+how("Papers per publication year, coloured by result. <b>Percent</b> shows shares instead of numbers.")
 ```
 
 ```{python}
@@ -348,21 +338,13 @@ if n_nogen:   # say on the chart itself that the base is smaller than all papers
                                 f"saying {'they have' if n_nogen > 1 else 'it has'} no data of {'their' if n_nogen > 1 else 'its'} own.")
     _ = fig.update_layout(margin=dict(b=40))
 display(fig)
-how("One result per paper:<ul>"
-    "<li><b>Shares own data</b>: the paper points to the authors' own data and the link works. One bar: "
-    "dark blue = open, light blue = restricted access (e.g. personal data). Both count as shared.</li>"
-    "<li><b>In article / supplement only</b>: the paper says its data are in the article or its "
-    "supplementary files, not in a repository. Not counted as shared.</li>"
-    "<li><b>On request only</b>: the paper says the data can be asked for, but they are not stored "
-    "anywhere. Not counted as shared.</li>"
-    "<li><b>Reuses data only</b>: only other people's data.</li>"
-    "<li><b>Declared, not verifiable</b>: the paper mentions data, but the link does not work.</li>"
-    "<li><b>No data found</b>: the rest. Not shared, or no data: the tool can't tell which.</li></ul>"
-    f"Papers that say they generated no data ({n_nogen} this run) have nothing to share, so they are left "
-    f"out of all charts and percentages: shares are of {NB} papers, not {N}. They are listed in the Papers "
-    "table.<br>"
-    "The result is about what the paper says. Datasets that only DataCite links to a paper are on the "
-    "<b>Tool check</b> page.")
+how("One result per paper, from what the paper itself says:<ul>"
+    "<li><b>Shares own data</b>: own data deposited, link works. Dark = open, light = restricted access.</li>"
+    "<li><b>In article / supplement</b>, <b>on request</b>: own data, not deposited. Not counted.</li>"
+    "<li><b>Reuses data only</b>: only others' data.</li>"
+    "<li><b>Declared, not verifiable</b>: the link to own data does not work.</li>"
+    "<li><b>No data found</b>: not shared, or no data. The tool can't tell which.</li></ul>"
+    f"Left out: {n_nogen} paper(s) saying they have no data. Percent of {NB} papers.")
 ```
 
 ```{python}
@@ -393,12 +375,8 @@ _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
 display(NORM_BTNS)
 display(fig)
-how(f"The paper's research field in the Swedish standard <b>SSIF</b>: from the paper's record in "
-    f"Swepub, or from Swepub's automatic classifier (title + abstract) when the paper is not in Swepub. "
-    f"A paper in two fields counts in both, so the bars can add up to more than {NB}.<br>"
-    f"<b>Percent</b> shows each field's results as shares of its own papers (small fields: few papers, "
-    f"so a share can jump a lot).<br>"
-    f"<b>No SSIF field</b>: no DOI or no abstract. Colours as in the charts above.")
+how("Results per research field (SSIF, from Swepub). A paper in two fields counts in both. Small fields: "
+    "shares jump easily.")
 ```
 
 ```{python}
@@ -434,10 +412,9 @@ fig = go.Figure(go.Bar(y=lt.index, x=lt.values, orientation="h", marker_color=SL
                        hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>%{customdata}<extra></extra>"))
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, lt.max() * 1.4]), showlegend=False)
 display(fig)
-how("The licence the repository records for each of the authors' own datasets: the terms for reusing "
-    "them (the “R” in FAIR). <b>CC BY</b> / <b>CC0</b> allow any reuse; <b>NC</b> = non-commercial only, "
-    "<b>ND</b> = no changes. <b>No licence stated</b>: the DOI record has no licence, so it is legally unclear whether the data may be reused. <b>Archive without a licence field</b>: archives without DOIs (e.g. ENA, PRIDE) that this tool cannot read a licence from (they often have one general policy instead).<br>Hover a bar to see the repositories.<br>"
-    "Licence is separate from access: restricted-access data can have a licence, open data can lack one.")
+how("Licence of the authors' own datasets: the terms for reuse. <b>CC BY</b>, <b>CC0</b>: any reuse. "
+    "<b>NC</b>: non-commercial only. <b>ND</b>: no changes. <b>No licence stated</b>: reuse is legally unclear. "
+    "<b>Archive without a licence field</b>: e.g. ENA, not readable here.")
 ```
 
 ```{python}
@@ -469,12 +446,8 @@ for k in ["stated", "llm", "none"]:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15, traceorder="normal"))
 display(NORM_BTNS); display(fig)
-how(f"Papers that use data from someone else (other studies, public databases, benchmarks), per research "
-    f"field. <b>{n_reuse} of {NB}</b> papers this run.<br><b>The paper says so</b>: found by pattern search "
-    "(“we use data from two studies”, “publicly available dataset”). <b>Only the LLM says so</b>: the LLM "
-    "names data the authors did not create (software left out); less certain.<br>Not part of the data "
-    "verdict: reused data are mostly cited without an id, so they can't be verified. A paper can both "
-    "share its own data and reuse others'.")
+how(f"Papers that use data from others, per research field. <b>The paper says so</b>: found in the text "
+    f"by pattern search. <b>Only the LLM says so</b>: less certain. Not verified, not part of the result.")
 ```
 
 ```{python}
@@ -538,14 +511,9 @@ if HAVE_NORM:
     _ = style(fig).update_layout(xaxis=dict(ticksuffix="%", range=[0, 100], title=dict(text="% of datasets openly available")),
                                  legend=dict(orientation="h", y=-0.2), bargap=0.5)
     display(fig)
-    display(how("How many of the authors' own datasets are <b>openly available</b>, compared with what is "
-                "usual in the same repositories. <b>Bar</b>: the datasets in these papers. <b>Black tick</b>: "
-                "the share that is open among all other datasets in the same repositories and field (in "
-                "DataCite; the whole repository if it has no field information). Bar past the tick = more open "
-                "than usual there.<br>The rest have <b>restricted access</b> (e.g. personal data, access on "
-                "application). That still counts as sharing, and is often necessary.<br>Only fields with at "
-                "least one own dataset in DataCite are shown. Few datasets per field: read as examples, not "
-                "trends. Update with <i>python field_norm.py</i>."))
+    display(how("Share of own datasets that are open (bar), next to the usual share in the same repositories and "
+                "field (tick). Bar past the tick = more open than usual. Restricted access still counts as "
+                "sharing. Few datasets per field: examples, not trends."))
 else:
     display(Markdown("No reference yet. Run `python field_norm.py` after the pipeline (asks DataCite, a "
                      "few minutes) to write `field_norm.csv` and `field_norm_datasets.csv`, then render again."))
@@ -580,11 +548,8 @@ for v in ORDER:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.12, traceorder="normal"))
 display(NORM_BTNS); display(fig)
-how("Does the paper have a <b>data availability statement</b> (a section that says where the data are, "
-    "e.g. “Data availability”, “Data accessibility”, “Availability of data and materials”)? Found by "
-    "pattern search on the heading, or by the LLM. Colours as on the Overview page: do papers with a "
-    "statement share their data more often?<br>A statement is not the same as shared data: it can also say "
-    "“on request” or “not applicable”.")
+how("Does the paper have a data availability statement (found by pattern search or the LLM)? A statement "
+    "can also say “on request” or “not applicable”.")
 ```
 
 ```{python}
@@ -617,11 +582,8 @@ for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15))
 display(NORM_BTNS); display(fig)
-how(f"Papers with a data availability statement (dark) and without (light), per <b>publisher</b> (from "
-    f"the paper's DOI). Publishers set most journal data policies and statement templates, so this shows "
-    f"where a policy makes a difference. Publishers with fewer than {MIN_PUB} papers are pooled in "
-    "<b>Other</b>; the number after the name is the papers.<br>Not per journal: most journals have only "
-    "one or two papers here. The journal of every paper is in the <b>Data</b> tab.")
+how(f"Papers with (dark) and without (light) a data availability statement, per publisher. Publishers "
+    f"with fewer than {MIN_PUB} papers are in <b>Other</b>.")
 ```
 
 ```{python}
@@ -647,10 +609,8 @@ for v in ORDER:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15, traceorder="normal"))
 display(NORM_BTNS); display(fig)
-how(f"The data verdict of the papers, per publisher. Colours as on the Overview page. <b>Percent</b> "
-    f"compares publishers of different size. Publishers with fewer than {MIN_PUB} papers are pooled in "
-    "<b>Other</b>.<br>Few papers per publisher: read as a hint where to look (e.g. many “on request” "
-    "under one publisher's policy), not as a ranking.")
+how(f"Results per publisher. Publishers with fewer than {MIN_PUB} papers are in <b>Other</b>. Few papers: "
+    "a hint where to look, not a ranking.")
 ```
 
 ```{python}
@@ -683,10 +643,8 @@ for k, lab in ACCL.items():
                         hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra>" + lab + "</extra>")
 _ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15), yaxis=EVERY_LABEL)
 display(fig)
-how("Where the authors' own datasets are stored: the repository that registered the dataset's DOI "
-    "(e.g. SND, Chalmers DORIS, Zenodo), split by access. <b>Restricted access</b>: deposited, but access "
-    "on conditions (e.g. personal data); still counted as shared.<br>Hover a bar to see the responsible "
-    "institution. Archives without DOIs (e.g. ENA) show the archive.")
+how("Where the authors' own datasets are stored, open or restricted access. Hover a bar for the "
+    "responsible institution.")
 ```
 
 ```{python}
@@ -718,11 +676,8 @@ for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
 _ = style(fig).update_layout(barmode="stack", legend=dict(orientation="h", y=-0.15), yaxis=EVERY_LABEL)
 display(fig)
 n_back = int((TR.back == "yes").sum())
-how(f"The paper points to the dataset. Does the dataset's record in DataCite also point back to the paper? "
-    f"<b>This run:</b> {n_back} of {len(TR)} own datasets with a DOI.<br>A missing link is a metadata gap in "
-    "the repository record, not the authors' fault in the paper: it makes the data harder to find from the "
-    "paper's side (and for tools such as RoAgg). Useful for repositories and data support to follow up.<br>"
-    "Only datasets with a DOI; archives without DOIs (e.g. ENA, PRIDE) are left out.")
+how(f"Does the dataset's record in DataCite link back to the paper? {n_back} of {len(TR)} do. A missing link "
+    "is a gap in the repository record. Datasets with a DOI only.")
 ```
 
 ```{python}
@@ -899,13 +854,8 @@ for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not co
                         hovertemplate="%{y}: %{x}<extra>" + k + "</extra>")
 _ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.2))
 display(fig)
-display(how("How each dataset was found:<ul>"
-            "<li><b>LLM</b>: a large language model reads the paper and lists the data it mentions.</li>"
-            "<li><b>Pattern search</b>: a rule-based search (regular expressions) of the same text, for DOIs and archive "
-            "numbers (e.g. PRJEB84056).</li>"
-            "<li><b>DataCite</b>: the other way round. The dataset's record says it belongs to the paper. It "
-            "counts only if the paper also mentions the dataset (e.g. by web link).</li></ul>"
-            "The <b>Data</b> tab has the rows behind the chart, also as CSV."))
+display(how("How each dataset was found: <b>LLM</b> (reads the paper), <b>pattern search</b> (finds DOIs and "
+            "archive numbers), or <b>DataCite</b> (the dataset's record names the paper)."))
 # value boxes can't hold extra text, so their hovers are written here and placed by title (data-for)
 n_dfp = int(C.found_by.str.contains("DFP").sum())
 n_pat = int(C.found_by.str.contains("regex").sum())
@@ -913,21 +863,13 @@ WHY = {"landing page": "the paper gives the dataset's web page, not its DOI",
        "doi (malformed)": "the dataset link in the text is broken"}
 missed = [f"{NAME.get(str(r.paper).rsplit('.', 1)[0].lower(), r.paper)} ({WHY.get(r.cited_as, r.cited_as)})"
           for r in C[~C.result.str.startswith("found")].itertuples()]
-display(how("Normally we can't know which datasets a paper <i>should</i> have. One exception: the dataset's "
-            "record in DataCite says it belongs to the paper, <b>and</b> the paper cites it. Then the right "
-            "answer is certain, so these datasets are a small test for the two text searches.<br>"
-            f"<b>This run:</b> {len(C)} such datasets. Found {n_found}: LLM {n_dfp}, pattern search {n_pat}. "
-            + ("Missed: " + "; ".join(missed) + "." if missed else "None missed.") + "<br>"
-            "<b>Limits:</b> only repositories that record the link back to the paper take part (mostly SND "
-            "and Chalmers DORIS). It shows how often the searches <i>miss</i> data, not how often they report "
-            "something that isn't data.", card="Self-check"))
-display(how("<b>repaired</b>: a broken dataset link that the tool fixed automatically (it matches a "
-            "registered DOI).<br><b>dead</b>: a dataset link in the paper that does not work (page or record "
-            "not found).<br>"
-            "<b>no id</b>: the paper mentions data, but gives no link.", card="Broken ids"))
-display(how("Rows where the LLM and the other checks give different answers: is it a dataset (DOI "
-            "registry), is it the authors' own (ORCID and author names), is it open or restricted (DataCite "
-            "access rights), or found only by pattern search. Listed row by row in the table below.",
+display(how("A small test of the text searches: datasets whose DataCite record names the paper, and the "
+            f"paper cites them. Found {n_found} of {len(C)} (LLM {n_dfp}, pattern search {n_pat}). "
+            + ("Missed: " + "; ".join(missed) + ". " if missed else "")
+            + "Measures missed data only; mostly SND and Chalmers DORIS datasets take part.", card="Self-check"))
+display(how("<b>repaired</b>: a broken link the tool fixed. <b>dead</b>: the link does not work. "
+            "<b>no id</b>: data mentioned, but no link.", card="Broken ids"))
+display(how("Rows where the LLM and pattern search or a registry disagree. Listed in the table below.",
             card="Rows where the LLM"))
 ```
 
@@ -957,11 +899,8 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue), **EVERY_LABEL), legend=dict(y=-0.12))
 display(fig)
-how("What the tool is unsure about, by colour:<ul>"
-    "<li><b>Dark</b>: broken or missing dataset links.</li>"
-    "<li><b>Middle</b>: the LLM disagrees with pattern search or a registry.</li>"
-    "<li><b>Light</b>: the paper's DOI, or datasets only DataCite links to the paper.</li></ul>"
-    "The table <i>To check, row by row</i> says what each issue means and what to do.")
+how("What the tool is unsure about. Dark: broken or missing links. Middle: the LLM vs the other checks. "
+    "Light: paper metadata. The table below says what to do.")
 ```
 
 ```{python}
