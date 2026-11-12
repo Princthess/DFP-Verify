@@ -248,13 +248,15 @@ Pages:
   own; papers saying they generated no data are left out), the data verdict per publication year,
   for all papers and per SSIF area (count / percent), licences of own datasets, papers that reuse
   others' data, and (if `field_norm.py` has run) own datasets vs what is usual in their repositories.
-- **Publishers & repositories**: data availability statement by verdict and per publisher, the verdict
-  per publisher (publishers with fewer than 4 papers pooled), repositories with open / restricted
-  datasets, and whether each dataset's record links back to the paper.
-- **Tool check**: monitoring the tool itself. Which source found each dataset (DFP and regex, one of
-  them, or only DataCite), the self-check score, and a to-do list of what to check by hand: broken
-  ids, rows where DFP and DFP-Verify differ, known datasets the text detectors didn't find, and
-  paper-DOI corrections. Each row says what the issue means and what to do.
+- **Infrastructure**: under which policies, in which repositories, and does the metadata reach the
+  data? Data availability statement by verdict and per publisher, the verdict per publisher
+  (publishers with fewer than 4 papers pooled), repositories with open / restricted datasets, whether
+  each dataset's record links back to the paper, Zenodo communities, and (if `roagg_compare.py` has
+  run) which own datasets RoAgg finds, why the others are missing, and what could improve for whom.
+- **Tool check**: how far to trust the numbers. Which source found each dataset, the self-check score,
+  and a to-do list of what to check by hand. Each row has a **possible cause** — the paper, the
+  dataset's record, the paper list (given DOI), this tool, or **Unclear** (named only with evidence: the
+  PDF, the registry record, two methods disagreeing) — who can act, and what it means / what to do.
 - **Papers**: the summary table.
 
 Every chart card has a **Data** tab next to the chart: the rows behind it as a table, plus CSV

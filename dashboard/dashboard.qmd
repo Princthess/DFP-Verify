@@ -524,7 +524,7 @@ else:
     display(Markdown("No `field_norm_datasets.csv` yet."))
 ```
 
-# Publishers & repositories {scrolling="true"}
+# Infrastructure {scrolling="true"}
 
 ## Row {height=560px}
 
@@ -721,8 +721,6 @@ data_tab(ZO[["paper", "identifier", "group", "zenodo_community"]].sort_values(["
          counts=zt.iloc[::-1].rename_axis("community").reset_index(name="datasets"))
 ```
 
-# Compared with RoAgg {scrolling="true"}
-
 ```{python}
 #| include: false
 # roagg_compare.py (optional) -> roagg_compare.csv + roagg_info.json. Own datasets only. Papers that
@@ -868,101 +866,109 @@ if HAVE_RC:
 # Sources: per_dataset.csv, merged_output.csv (dv_disagreement), selfcheck.csv (answer key).
 M = pd.read_csv(os.path.join(OUT, "merged_output.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 C = pd.read_csv(os.path.join(OUT, "selfcheck.csv"), encoding="utf-8-sig", dtype=str).fillna("")
-G_ID, G_TOOLS, G_PAPER = "Broken or missing ids", "LLM vs pattern search / registries", "Paper metadata"
+# Possible cause is only claimed with evidence (the PDF, the registry record, two methods disagreeing);
+# otherwise "Unclear", and the text says what it could be. Who can act follows from the cause.
+C_PAPER, C_RECORD, C_LIST, C_TOOL, C_UNCLEAR = ("The paper", "The dataset's record", "The paper list (given DOI)",
+                                                "This tool", "Unclear")
+CAUSES = [C_PAPER, C_RECORD, C_LIST, C_TOOL, C_UNCLEAR]
+WHO = {C_PAPER: "Authors / publisher", C_RECORD: "Repository / authors", C_LIST: "Whoever supplied the papers",
+       C_TOOL: "Tool maintainers", C_UNCLEAR: "Check by hand first"}
 rows = []
-def add(group, issue, paper, ident, todo): rows.append(dict(group=group, issue=issue, paper=paper, identifier=ident, todo=todo))
+def add(cause, issue, paper, ident, todo):
+    rows.append(dict(cause=cause, who=WHO[cause], issue=issue, paper=paper, identifier=ident, todo=todo))
 
 cause = dict(zip(C.identifier, C.broken_id_cause))
 # only ids that matter: counted, declared or DataCite-linked datasets (a repaired reference DOI is noise)
 REL = D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("likely")
 for _, r in D[REL & D.verdict.str.contains(r"\[text had ", regex=True)].iterrows():
-    add(G_ID, "Id had a footnote number or word glued on", NAME.get(r.paper, r.paper), r.identifier,
+    add(C_TOOL, "Id had a footnote number or word glued on", NAME.get(r.paper, r.paper), r.identifier,
         "Text had " + r.verdict.split("[text had ")[-1].rstrip("]") + ". Used without it; nothing to fix in the paper")
 for _, r in D[REL & D.registry.str.startswith("repaired")].iterrows():
     written = r.registry[len("repaired (text had "):-1]
     cs = cause.get(r.identifier, "")
     if cs == "as-printed":
-        add(G_ID, "Wrong id printed in the paper", NAME.get(r.paper, r.paper), r.identifier,
+        add(C_PAPER, "Wrong id printed in the paper", NAME.get(r.paper, r.paper), r.identifier,
             f"Paper prints {written}. Registered DOI used; worth reporting to authors / publisher")
     elif cs == "pdf-extraction":
-        add(G_ID, "Id broken by PDF text extraction", NAME.get(r.paper, r.paper), r.identifier,
+        add(C_TOOL, "Id broken by PDF text extraction", NAME.get(r.paper, r.paper), r.identifier,
             f"Text had {written}; the PDF itself is right. Registered DOI used, nothing to fix in the paper")
     else:
-        add(G_ID, "Id repaired, cause not checked", NAME.get(r.paper, r.paper), r.identifier,
+        add(C_UNCLEAR, "Id repaired, cause not checked", NAME.get(r.paper, r.paper), r.identifier,
             f"Text had {written}. Set DV_PDF_DIR to check the PDF")
 for _, r in D[D.status == "likely-broken-link"].iterrows():
-    add(G_ID, "Declared link does not resolve", NAME.get(r.paper, r.paper), r.identifier,
+    add(C_UNCLEAR, "Declared link does not resolve", NAME.get(r.paper, r.paper), r.identifier,
         "Check by hand: typo, private/review link, or removed record")
 for _, r in D[(D.status == "likely-unchecked") & (D.provenance != "reused")].iterrows():
-    add(G_ID, "Link could not be checked automatically", NAME.get(r.paper, r.paper), r.identifier,
+    add(C_UNCLEAR, "Link could not be checked automatically", NAME.get(r.paper, r.paper), r.identifier,
         "The site blocks automated checks. Open it by hand: does it work, and is it a published "
         "record (not a private or reviewer link)?")
 for _, r in D[(D.status == "likely-no-doi") & (D.provenance != "reused")].iterrows():
-    add(G_ID, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
+    add(C_PAPER, "Declared without a resolvable id", NAME.get(r.paper, r.paper), r.identifier,
         "Data statement points to a site, not a record; check by hand")
 for _, r in D[(D.status == "confirmed") & (D.provenance == "unknown")].iterrows():
-    add(G_TOOLS, "Own or reused unclear", NAME.get(r.paper, r.paper), r.identifier,
+    add(C_TOOL, "Own or reused unclear", NAME.get(r.paper, r.paper), r.identifier,
         "Verified dataset, but no signal says whose (no creator metadata or ORCID, no clear sentence, no LLM "
         "judgement). Not counted as own. Read the sentence around it in the paper")
 for _, r in D[D.status == "likely-wrong-type"].iterrows():
-    add(G_ID, "Declared as the paper's data, but the record is not typed as data", NAME.get(r.paper, r.paper),
+    add(C_RECORD, "Declared as the paper's data, but the record is not typed as data", NAME.get(r.paper, r.paper),
         r.identifier, f"Registry type: {r.verdict.split('(')[-1].rstrip(')')}. Open it: is it the data (wrong type "
         "in the repository, worth reporting) or another publication?")
 for _, r in D[D.status == "homepage"].iterrows():
-    add(G_ID, "Link to a website's front page, not a record (paper also gives its own record)",
+    add(C_PAPER, "Link to a website's front page, not a record (paper also gives its own record)",
         NAME.get(r.paper, r.paper), r.identifier,
         "Not counted as a dataset. Usually the repository named next to its record, or the source of data "
         "the authors reused. Check only if the paper has data of its own in a second place")
 for _, r in C[C.result.str.startswith("not found")].iterrows():
-    add(G_TOOLS, "Known dataset not found in the text", r.paper, r.identifier,
+    add(C_TOOL, "Known dataset not found in the text", r.paper, r.identifier,
         f"DataCite links it and the paper cites it as {r.cited_as}; neither the LLM nor pattern search found it")
 
 for _, r in M[M.dv_disagreement != ""].iterrows():
     for part in r.dv_disagreement.split("; "):
         if part.startswith("detect:"):
-            add(G_TOOLS, "Not found by the LLM, found by pattern search or DataCite", r.file, r.identifier,
+            add(C_TOOL, "Not found by the LLM, found by pattern search or DataCite", r.file, r.identifier,
                 "Found by " + " + ".join({"llm": "LLM", "regex": "pattern search", "datacite": "DataCite",
                                           "text": "web link in text"}.get(t, t)
                                          for t in part.split("(found by ")[-1].rstrip(")").split("+")))
         elif part.startswith("isdata:"):
-            add(G_TOOLS, "LLM says dataset, DOI registry says not a dataset", r.file, r.identifier,
+            add(C_TOOL, "LLM says dataset, DOI registry says not a dataset", r.file, r.identifier,
                 "Registry type: " + (r.dv_verdict.split("(")[-1].rstrip(")") or "?") + ". Usually a cited article; check if wanted")
         elif part.startswith("prov:"):
-            add(G_TOOLS, "Own vs reused differs", r.file, r.identifier,
+            add(C_TOOL, "Own vs reused differs", r.file, r.identifier,
             part[len("prov: "):].replace("DFP=", "LLM: ").replace("DV=", "ORCID / author names: "))
         elif part.startswith("open:"):
-            add(G_TOOLS, "Open vs restricted differs", r.file, r.identifier,
+            add(C_TOOL, "Open vs restricted differs", r.file, r.identifier,
             part[len("open: "):].replace("DFP=", "LLM: ").replace("DV=", "DataCite access rights: "))
 
 pdoi = M.groupby("file").agg(check=("dv_paper_doi_check", "first"), given=("paper_doi", "first"), doi=("dv_paper_doi", "first"))
 for f, r in pdoi.iterrows():
     if r.check == "corrected":
-        add(G_PAPER, "Paper DOI corrected by title check", f, r.doi, f"Given: {r.given or 'none'}. Check which is right")
+        add(C_LIST, "Paper DOI corrected by title check", f, r.doi, f"Given: {r.given or 'none'}. Check which is right")
     elif r.check == "found":
-        add(G_PAPER, "Paper DOI found by title check", f, r.doi, "No DOI was given")
+        add(C_LIST, "Paper DOI found by title check", f, r.doi, "No DOI was given")
     elif r.check == "unconfirmed":
-        add(G_PAPER, "Paper DOI not confirmed", f, r.given, "No DataCite lookup or field for this paper; check the DOI")
+        add(C_UNCLEAR, "Paper DOI not confirmed", f, r.given, "No DataCite lookup or field for this paper; check the DOI")
 for p, g in D[D.status == "datacite-only"].groupby("paper"):
-    add(G_PAPER, "DataCite links datasets the paper doesn't cite", NAME.get(p, p), f"{len(g)} dataset(s)",
-        "Not counted. Check the published version, or the dataset's metadata")
+    add(C_UNCLEAR, "DataCite links datasets the paper doesn't cite", NAME.get(p, p), f"{len(g)} dataset(s)",
+        "Not counted. Could be the paper not citing it, or the record naming the wrong paper. Check the "
+        "published version and the dataset's record")
 # the paper says it has no data of its own, but the tool found own or declared data in it
 for _, r in S[(S.no_data_signal != "") & (S.data_verdict.str.startswith("shared own data")
                                           | (S.data_verdict == DECL))].iterrows():
-    add(G_PAPER, "Paper says it has no data, yet cites own data", r.paper, r.no_data_signal[:90],
-        "Read the data statement: is the cited dataset the authors' own?")
+    add(C_UNCLEAR, "Paper says it has no data, yet cites own data", r.paper, r.no_data_signal[:90],
+        "Could be the wording or the tool. Read the data statement: is the cited dataset the authors' own?")
 
 # data availability statement: the LLM and the pattern search (heading) disagree
 for _, r in S[(S.das_llm != "") & ((S.das_pattern != "") != (S.das_llm == "yes"))].iterrows():
     if r.das_pattern:
-        add(G_TOOLS, "Data availability statement: found by pattern search, not by the LLM", r.paper,
+        add(C_TOOL, "Data availability statement: found by pattern search, not by the LLM", r.paper,
             r.das_pattern, "Check the heading in the paper: is it a data availability statement?")
     else:
-        add(G_TOOLS, "Data availability statement: found by the LLM, not by pattern search", r.paper, "",
+        add(C_TOOL, "Data availability statement: found by the LLM, not by pattern search", r.paper, "",
             "Check the paper: which heading does it use? (A new wording could be added to the search.)")
 
-Q = pd.DataFrame(rows, columns=["group", "issue", "paper", "identifier", "todo"])
-# issue groups are not verdicts, so they get neutral slate shades, not verdict colours
-GCOL = {G_ID: SLATE[0], G_TOOLS: SLATE[1], G_PAPER: SLATE[2]}
+Q = pd.DataFrame(rows, columns=["cause", "who", "issue", "paper", "identifier", "todo"])
+# causes are not verdicts: neutral slate shades, dark to light; "Unclear" lightest
+GCOL = dict(zip(CAUSES, ["#3d4f63", "#5d6f84", "#7b8ca0", "#a3b1c2", "#c4cdd8"]))
 ```
 
 ## Row {height=160px}
@@ -1059,12 +1065,12 @@ data_tab(R.assign(paper=R.paper.map(lambda k: NAME.get(k, k)))
 
 ```{python}
 #| title: "What needs checking"
-qc = Q.groupby(["group", "issue"]).size().reset_index(name="n")
-qc["g"] = qc.group.map({G_ID: 0, G_TOOLS: 1, G_PAPER: 2})
+qc = Q.groupby(["cause", "issue"]).size().reset_index(name="n")
+qc["g"] = qc.cause.map({c: i for i, c in enumerate(CAUSES)})
 qc = qc.sort_values(["g", "n"], ascending=[False, True])
 fig = go.Figure()
-for g in [G_ID, G_TOOLS, G_PAPER]:
-    s = qc[qc.group == g]
+for g in CAUSES:
+    s = qc[qc.cause == g]
     if len(s):
         _ = fig.add_bar(y=s.issue, x=s.n, orientation="h", name=g, marker_color=GCOL[g],
                         text=s.n, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
@@ -1072,19 +1078,23 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue), **EVERY_LABEL), legend=dict(y=-0.12))
 display(fig)
+how("Possible cause is only named when there is evidence (the PDF, the dataset's record, two "
+    "methods disagreeing). Otherwise it says <b>Unclear</b>, and the row says what it could be.")
 ```
 
 ```{python}
 #| title: "Data"
 # counts only: the rows themselves are in "To check, row by row" below
-data_tab(qc.iloc[::-1][["group", "issue", "n"]].rename(columns={"n": "rows"}), "to_check_counts")
+data_tab(qc.iloc[::-1][["cause", "issue", "n"]].rename(columns={"cause": "possible cause", "n": "rows"}), "to_check_counts")
 ```
 
 ## Row {height=600px}
 
 ```{python}
 #| title: "To check, row by row"
-data_tab(Q.sort_values(["group", "issue", "paper"]).rename(columns={"todo": "what it means / what to do"}), "to_check")
+data_tab(Q.assign(_o=Q.cause.map({c: i for i, c in enumerate(CAUSES)})).sort_values(["_o", "issue", "paper"])
+           .drop(columns="_o").rename(columns={"cause": "possible cause", "who": "who can act",
+                                               "todo": "what it means / what to do"}), "to_check")
 ```
 
 # Papers
