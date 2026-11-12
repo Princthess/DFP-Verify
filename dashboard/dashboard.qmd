@@ -766,30 +766,25 @@ if HAVE_RC:
                                   if w.startswith("not in the paper") else "Check the paper: how does it cite this dataset?")
 ```
 
-## Row {height=160px}
+## Row {height=96px}
 
 ```{python}
-#| content: valuebox
-#| title: "Own datasets in the organisation's papers"
-#| icon: box-seam
-dict(value=len(RA) if HAVE_RC else "–", color="light")
-```
-
-```{python}
-#| content: valuebox
-#| title: "…also in RoAgg"
-#| icon: check2-circle
+# Section intro instead of value boxes: in the middle of the page, boxes had no context.
 n_in = int((RA.status == "In RoAgg").sum()) if HAVE_RC else 0
-dict(value=f"{pct(n_in, len(RA))}  ({n_in})" if HAVE_RC and len(RA) else "–", color="primary")
+if HAVE_RC and len(RA):
+    display(HTML(
+        '<div class="dv-context"><b>Does the organisation’s metadata reach its datasets?</b> '
+        'RoAgg (SND) lists what DataCite ties to the organisation: publisher, creator or contributor '
+        f'affiliation, funder. Of the <b>{len(RA)}</b> own datasets in the organisation’s papers, RoAgg finds '
+        f'<b>{n_in}</b> ({pct(n_in, len(RA))}); <b>{len(RA) - n_in}</b> it can’t see.<br>'
+        f'RoAgg list: {RINFO.get("roagg_file", "?")}, {RINFO.get("roagg_records", "?")} records, '
+        f'{RINFO.get("roagg_date", "?")}. Left out: {n_notorg} own dataset(s) of papers with no author of the '
+        'organisation.</div>'))
+else:
+    display(HTML('<div class="dv-context"><b>Does the organisation’s metadata reach its datasets?</b> No '
+                 'comparison with RoAgg yet: run RoAgg, then <code>python roagg_compare.py &lt;roagg.csv&gt;</code> '
+                 '(see README), then render again.</div>'))
 ```
-
-```{python}
-#| content: valuebox
-#| title: "Not found by RoAgg"
-#| icon: search
-dict(value=(len(RA) - n_in) if HAVE_RC else "–", color="light")
-```
-
 ## Row {height=480px}
 
 ### Column {.tabset}
@@ -808,14 +803,8 @@ if HAVE_RC and len(RA):
     _ = style(fig).update_layout(barmode="stack", legend=dict(orientation="h", y=-0.15, traceorder="normal"),
                                  yaxis=EVERY_LABEL)
     display(fig)
-    display(how("RoAgg lists what DataCite ties to the organisation (publisher, creator or contributor "
-                f"affiliation, funder). A dataset missing there can't be counted from metadata. Left out: "
-                f"{n_notorg} own dataset(s) of papers with no author of the organisation."))
-    display(how(f"Own datasets of the organisation's papers, found by reading the papers. RoAgg list: "
-                f"{RINFO.get('roagg_file', '?')} ({RINFO.get('roagg_records', '?')} records, "
-                f"{RINFO.get('roagg_date', '?')}).", card="Own datasets in the organisation"))
-    display(how("Most often because the dataset's record has no affiliation to the organisation. See "
-                "the table below.", card="Not found by RoAgg"))
+    display(how("A dataset RoAgg can't see can't be counted from metadata alone. The table below says what "
+                "could change that, and for whom."))
 else:
     display(Markdown("No comparison yet. Run RoAgg for the organisation, then `python roagg_compare.py "
                      "<roagg.csv>` (see README), then render again."))
