@@ -792,13 +792,6 @@ dict(value=f"{pct(n_in, len(RA))}  ({n_in})" if HAVE_RC and len(RA) else "–", 
 dict(value=(len(RA) - n_in) if HAVE_RC else "–", color="light")
 ```
 
-```{python}
-#| content: valuebox
-#| title: "RoAgg links to the papers, not found in the text"
-#| icon: link-45deg
-dict(value=len(RB) if HAVE_RC else "–", color="light")
-```
-
 ## Row {height=480px}
 
 ### Column {.tabset}
@@ -825,8 +818,6 @@ if HAVE_RC and len(RA):
                 f"{RINFO.get('roagg_date', '?')}).", card="Own datasets in the organisation"))
     display(how("Most often because the dataset's record has no affiliation to the organisation. See "
                 "the table below.", card="Not found by RoAgg"))
-    display(how("Datasets whose record in DataCite names one of the papers, but which the text search "
-                "doesn't have as the authors' own data.", card="RoAgg links to the papers"))
 else:
     display(Markdown("No comparison yet. Run RoAgg for the organisation, then `python roagg_compare.py "
                      "<roagg.csv>` (see README), then render again."))
@@ -862,8 +853,9 @@ else:
 ```{python}
 #| title: "What could improve, and for whom"
 if HAVE_RC:
-    W = pd.concat([RA[RA.for_whom != ""][["for_whom", "paper", "identifier", "repository", "what_to_do"]],
-                   RB[["for_whom", "paper", "identifier", "repository", "what_to_do"]]])
+    # only the RoAgg side: RoAgg's own links to papers come from DataCite, the same source as the
+    # tool's reverse lookup -- those are on the Tool check page ("DataCite links datasets the paper doesn't cite")
+    W = RA[RA.for_whom != ""][["for_whom", "paper", "identifier", "repository", "what_to_do"]]
     W = W.rename(columns={"for_whom": "for", "what_to_do": "what to do"}).sort_values(["for", "repository", "paper"])
     display(data_tab(W, "roagg_improve"))
 ```
