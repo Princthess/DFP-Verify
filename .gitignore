@@ -61,3 +61,7 @@ dashboard/dashboard_*.html
 # local working docs for Claude (status, decisions; candid, not shared)
 PROGRESS.md
 DECISIONS.md
+
+# RoAgg comparison: its own venv and its harvests (local data)
+.venv-roagg/
+roagg_run/

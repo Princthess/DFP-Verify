@@ -268,6 +268,25 @@ DV_OUT_DIR=$PWD/output_mycorpus quarto render dashboard/dashboard.qmd --output d
 ```
 The result is `dashboard/dashboard.html` (not committed). Quarto writes an `--output` file to the repo
 root; move it into `dashboard/`, next to `dashboard_files/`, which it shares.
+### Comparison with RoAgg (optional)
+
+[RoAgg](https://github.com/snd-sweden/roagg) (SND) lists an organisation's research outputs from DataCite
+(+ OpenAIRE, Crossref) by ROR and name variants — metadata first, organisation level. DFP-Verify reads
+the papers. `roagg_compare.py` puts the two side by side for the authors' **own** datasets only:
+
+```
+pip install roagg      # in its own environment; no dependencies
+roagg --ror https://ror.org/040wg7k59 --name-txt chalmers.txt --source datacite --source openaire --source crossref --output roagg.csv
+DV_ORG_NAME=Chalmers DV_ORG_ROR=https://ror.org/040wg7k59 python roagg_compare.py roagg.csv   # reads DV_OUT_DIR
+```
+→ `roagg_compare.csv`: each own dataset found in the papers, whether RoAgg lists it (and through what:
+publisher / creator / contributor / funder), and if not, why — read from the dataset's DataCite record
+(no organisation name or ROR in it; not a DOI; not in DataCite) or because the paper isn't the
+organisation's (no affiliated author in OpenAlex). The other way round: RoAgg datasets whose record names
+one of the papers but that the tool has no own dataset for, and why. Versions are counted once
+(`conceptDoi`, figshare `.vN`). (`--source openalex` currently needs an OpenAlex API key for paging,
+which RoAgg 2026.0.4 can't pass, so the run stops — leave it out.)
+
 ### Repository reference for dataset openness (optional)
 
 `python field_norm.py` (after the pipeline) compares each own DataCite dataset with **the other
