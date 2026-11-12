@@ -105,6 +105,8 @@ import plotly.graph_objects as go
 from IPython.display import Markdown, HTML
 
 OUT = os.environ.get("DV_OUT_DIR") or os.path.join("..", "output")
+# category axes with many bars: Plotly hides every other label when space is short -- show them all
+EVERY_LABEL = dict(dtick=1, tickfont=dict(size=11), automargin=True)
 S = pd.read_csv(os.path.join(OUT, "summary.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 D = pd.read_csv(os.path.join(OUT, "per_dataset.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 
@@ -649,7 +651,7 @@ data_tab(PB[["publisher", "journal", "paper", "data_verdict", "datasets"]].sort_
                                          .rename_axis("publisher").reset_index())
 ```
 
-## Row {height=420px}
+## Row {height=540px}
 
 ### Column {.tabset}
 
@@ -670,7 +672,7 @@ for k, lab in ACCL.items():
         _ = fig.add_bar(y=rt.index, x=rt[k], orientation="h", name=lab, customdata=pubs.reindex(rt.index),
                         marker=dict(color=ACCC[k], line=dict(color=SURF, width=2)),
                         hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra>" + lab + "</extra>")
-_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15))
+_ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15), yaxis=EVERY_LABEL)
 display(fig)
 how("Where the authors' own datasets are stored: the repository that registered the dataset's DOI "
     "(e.g. SND, Chalmers DORIS, Zenodo), split by access. <b>Restricted access</b>: deposited, but access "
@@ -684,7 +686,7 @@ data_tab(OWN[["paper", "identifier", "repository", "publisher", "openness", "lic
          "repositories", counts=rt.rename(columns={**ACCL, "n": "datasets"}).iloc[::-1].reset_index())
 ```
 
-## Row {height=400px}
+## Row {height=540px}
 
 ### Column {.tabset}
 
@@ -704,7 +706,7 @@ for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
     _ = fig.add_bar(y=bt.index, x=bt[k], orientation="h", name=BACKL[k],
                     marker=dict(color=col, line=dict(color=SURF, width=2)),
                     hovertemplate="%{y}: %{x} dataset(s)<extra>" + BACKL[k] + "</extra>")
-_ = style(fig).update_layout(barmode="stack", legend=dict(orientation="h", y=-0.15))
+_ = style(fig).update_layout(barmode="stack", legend=dict(orientation="h", y=-0.15), yaxis=EVERY_LABEL)
 display(fig)
 n_back = int((TR.back == "yes").sum())
 how(f"The paper points to the dataset. Does the dataset's record in DataCite also point back to the paper? "
@@ -858,7 +860,7 @@ dict(value=f"{n_found} / {len(C)}" if len(C) else "–", color="light")
 dict(value=int((M.dv_disagreement != "").sum()), color="light")
 ```
 
-## Row {height=400px}
+## Row {height=540px}
 
 ### Column {.tabset}
 
@@ -943,12 +945,12 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
                         text=s.n, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
                         hovertemplate="%{y}: %{x}<extra>" + g + "</extra>")
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
-                             yaxis=dict(categoryorder="array", categoryarray=list(qc.issue)), legend=dict(y=-0.12))
+                             yaxis=dict(categoryorder="array", categoryarray=list(qc.issue), **EVERY_LABEL), legend=dict(y=-0.12))
 display(fig)
 how("What the tool is unsure about, by colour:<ul>"
-    "<li><b>Blue</b>: broken or missing dataset links.</li>"
-    "<li><b>Orange</b>: the LLM disagrees with pattern search or a registry.</li>"
-    "<li><b>Green</b>: the paper's DOI, or datasets only DataCite links to the paper.</li></ul>"
+    "<li><b>Dark</b>: broken or missing dataset links.</li>"
+    "<li><b>Middle</b>: the LLM disagrees with pattern search or a registry.</li>"
+    "<li><b>Light</b>: the paper's DOI, or datasets only DataCite links to the paper.</li></ul>"
     "The table <i>To check, row by row</i> says what each issue means and what to do.")
 ```
 
