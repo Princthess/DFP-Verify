@@ -130,12 +130,12 @@ def verify_candidates(cands, cache_path=".verify_cache.json", progress=True):
         k = c["kind"] + "|" + c["identifier"].lower()
         c["verdict"] = fresh.get(k) or cache.get(k, "unchecked")
         m = re.search(r" \[tail '(.+)' dropped\]$", c["verdict"])
-        if m:                         # use the id without the glued tail; say so like a DataCite repair
+        if m:                         # use the id without the glued tail; the verdict says what the text had
             written = c["identifier"]
             c["identifier"] = written[:-len(m.group(1))]
-            c["verdict"] = c["verdict"][:m.start()]
-            c.setdefault("registry", "")
-            if not c["registry"]: c["registry"] = f"repaired (text had {written})"
+            # NOT the `registry` field: "repaired" there means a DataCite link, and the self-check reads it
+            # as its answer key -- reference-list DOIs with a glued reference number must not land there
+            c["verdict"] = c["verdict"][:m.start()] + f" [text had {written}]"
     return cands
 
 def _retry(verdict):

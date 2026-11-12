@@ -18,7 +18,7 @@ Writes three tables:
                         dv_disagreement fires only when the two tools disagree, and says on
                         what + who decided -- open this when you want the reconciliation.
 """
-import os, csv
+import os, csv, re
 
 # DFP's own per-dataset columns, in DFP's order (new LiteLLM DFP: cli.py `_CSV_COLUMNS`).
 DFP_COLS = ["file", "paper_doi", "das_found", "ocr_page_count", "name", "repository",
@@ -134,6 +134,10 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
     if likely and (own or reused):
         notes.append(f"{len(likely)} declared link(s) not verified as a dataset (dead, unchecked, or not a record)")
     for c in confirmed:
+        tail = re.search(r"\[text had (.+)\]$", c.get("verdict", ""))
+        if tail and not c.get("registry", "").startswith("repaired"):
+            notes.append(f"dataset id had a footnote number or word glued on in the text ({tail.group(1)}); "
+                         f"{c['identifier']} used")
         if c.get("registry", "").startswith("repaired"):
             written, reg = c["registry"][len("repaired (text had "):-1], c["identifier"]
             cause = c.get("id_cause", "")

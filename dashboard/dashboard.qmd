@@ -736,6 +736,9 @@ def add(group, issue, paper, ident, todo): rows.append(dict(group=group, issue=i
 cause = dict(zip(C.identifier, C.broken_id_cause))
 # only ids that matter: counted, declared or DataCite-linked datasets (a repaired reference DOI is noise)
 REL = D.status.isin(["confirmed", "datacite-only"]) | D.status.str.startswith("likely")
+for _, r in D[REL & D.verdict.str.contains(r"\[text had ", regex=True)].iterrows():
+    add(G_ID, "Id had a footnote number or word glued on", NAME.get(r.paper, r.paper), r.identifier,
+        "Text had " + r.verdict.split("[text had ")[-1].rstrip("]") + ". Used without it; nothing to fix in the paper")
 for _, r in D[REL & D.registry.str.startswith("repaired")].iterrows():
     written = r.registry[len("repaired (text had "):-1]
     cs = cause.get(r.identifier, "")
