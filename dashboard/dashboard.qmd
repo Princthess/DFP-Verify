@@ -299,7 +299,7 @@ for v in ORDER:
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"))
 _ = style(fig).update_layout(margin=dict(t=36))
 display(NORM_BTNS); display(fig)
-how("Papers per publication year, coloured by result. <b>Percent</b> shows shares instead of numbers.")
+how("<b>Percent</b> shows each year as shares.")
 ```
 
 ```{python}
@@ -339,9 +339,8 @@ if n_nogen:   # say on the chart itself that the base is smaller than all papers
     _ = fig.update_layout(margin=dict(b=40))
 display(fig)
 how("One result per paper, from what the paper itself says:<ul>"
-    "<li><b>Shares own data</b>: own data deposited, link works. Dark = open, light = restricted access.</li>"
-    "<li><b>In article / supplement</b>, <b>on request</b>: own data, not deposited. Not counted.</li>"
-    "<li><b>Reuses data only</b>: only others' data.</li>"
+    "<li><b>Shares own data</b>: own data deposited, link works (dark = open, light = restricted).</li>"
+    "<li><b>In article / supplement</b>, <b>on request</b>: not deposited, so not counted.</li>"
     "<li><b>Declared, not verifiable</b>: the link to own data does not work.</li>"
     "<li><b>No data found</b>: not shared, or no data. The tool can't tell which.</li></ul>"
     f"Left out: {n_nogen} paper(s) saying they have no data. Percent of {NB} papers.")
@@ -375,8 +374,7 @@ _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), showlegend=False)
 display(NORM_BTNS)
 display(fig)
-how("Results per research field (SSIF, from Swepub). A paper in two fields counts in both. Small fields: "
-    "shares jump easily.")
+how("Field from Swepub (SSIF). A paper in two fields counts in both. Small fields: shares jump easily.")
 ```
 
 ```{python}
@@ -446,8 +444,8 @@ for k in ["stated", "llm", "none"]:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15, traceorder="normal"))
 display(NORM_BTNS); display(fig)
-how(f"Papers that use data from others, per research field. <b>The paper says so</b>: found in the text "
-    f"by pattern search. <b>Only the LLM says so</b>: less certain. Not verified, not part of the result.")
+how("Not verified and not part of the result: reused data are rarely cited with an id. "
+    "<b>Only the LLM</b> is less certain than what the text itself says.")
 ```
 
 ```{python}
@@ -511,9 +509,8 @@ if HAVE_NORM:
     _ = style(fig).update_layout(xaxis=dict(ticksuffix="%", range=[0, 100], title=dict(text="% of datasets openly available")),
                                  legend=dict(orientation="h", y=-0.2), bargap=0.5)
     display(fig)
-    display(how("Share of own datasets that are open (bar), next to the usual share in the same repositories and "
-                "field (tick). Bar past the tick = more open than usual. Restricted access still counts as "
-                "sharing. Few datasets per field: examples, not trends."))
+    display(how("“Usual” = all other datasets in the same repositories and field. Bar past the tick = more open "
+                "than usual. Restricted access still counts as sharing. Few datasets: examples, not trends."))
 else:
     display(Markdown("No reference yet. Run `python field_norm.py` after the pipeline (asks DataCite, a "
                      "few minutes) to write `field_norm.csv` and `field_norm_datasets.csv`, then render again."))
@@ -582,8 +579,7 @@ for k, col in [("yes", SLATE[0]), ("no", SLATE[2])]:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15))
 display(NORM_BTNS); display(fig)
-how(f"Papers with (dark) and without (light) a data availability statement, per publisher. Publishers "
-    f"with fewer than {MIN_PUB} papers are in <b>Other</b>.")
+how(f"Publisher from the paper's DOI. Publishers with fewer than {MIN_PUB} papers are in <b>Other</b>.")
 ```
 
 ```{python}
@@ -643,8 +639,7 @@ for k, lab in ACCL.items():
                         hovertemplate="<b>%{y}</b>: %{x} dataset(s)<br>publisher:<br>%{customdata}<extra>" + lab + "</extra>")
 _ = style(fig).update_layout(barmode="stack", legend=dict(y=-0.15), yaxis=EVERY_LABEL)
 display(fig)
-how("Where the authors' own datasets are stored, open or restricted access. Hover a bar for the "
-    "responsible institution.")
+how("The repository that registered each own dataset. Hover a bar for the responsible institution.")
 ```
 
 ```{python}
@@ -899,8 +894,7 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue), **EVERY_LABEL), legend=dict(y=-0.12))
 display(fig)
-how("What the tool is unsure about. Dark: broken or missing links. Middle: the LLM vs the other checks. "
-    "Light: paper metadata. The table below says what to do.")
+how("The table below says what each issue means and what to do.")
 ```
 
 ```{python}
