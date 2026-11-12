@@ -880,6 +880,7 @@ R["finder"] = R.source.map(finder)
 R["kind2"] = R.status.map(lambda s: "Verified dataset" if s == "confirmed" else
                           ("DataCite link only (not counted)" if s == "datacite-only" else "Declared, not verifiable"))
 ft = R.groupby(["finder", "kind2"]).size().unstack(fill_value=0).reindex(FIND[::-1]).fillna(0).astype(int)
+ft = ft[ft.sum(axis=1) > 0]                         # only ways that found something, as in the other charts
 fig = go.Figure()
 for k, col in [("Verified dataset", COLOR[SHARED]), ("DataCite link only (not counted)", COLOR[REGONLY]),
                ("Declared, not verifiable", COLOR[DECL])]:
