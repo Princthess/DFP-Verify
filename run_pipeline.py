@@ -23,6 +23,24 @@ def stem(s): return os.path.splitext(os.path.basename(str(s).replace("\\", "/"))
 # "data", "data files", "datasets" -- not "metadata"
 SAYS_DATA = re.compile(r"(?i)(?<!meta)\bdata(?:\s*sets?|\s+files?)?\b|\bdatasets?\b")
 
+def _write_run_info(out_dir, text_dir, dfp_csv, n_papers):
+    """run_info.json next to the outputs: what this run was -- the report prints it, and yearly runs can be
+    compared knowing which tool version counted them. Corpus name: DV_CORPUS, else the text folder's
+    parent folder name (".../260526/_text" -> "260526")."""
+    import json, subprocess, datetime
+    here = os.path.dirname(os.path.abspath(__file__))
+    def git(*a):
+        try: return subprocess.run(["git", *a], cwd=here, capture_output=True, text=True, timeout=10).stdout.strip()
+        except Exception: return ""
+    version = git("rev-parse", "--short", "HEAD")
+    if version and git("status", "--porcelain", "--untracked-files=no"):
+        version += " + local changes"
+    td = os.path.abspath(text_dir)
+    corpus = os.environ.get("DV_CORPUS") or os.path.basename(os.path.dirname(td) if os.path.basename(td).startswith("_") else td)
+    info = {"run_date": datetime.date.today().isoformat(), "corpus": corpus, "papers": n_papers,
+            "tool_version": version, "llm_csv": os.path.basename(dfp_csv or "")}
+    json.dump(info, open(os.path.join(out_dir, "run_info.json"), "w", encoding="utf-8"), indent=1)
+
 def _homepage(url):
     """A site's front page, not a record: no query, at most one path segment, and no digits in the path
     ("https://snd.gu.se/en", "https://www.ebi.ac.uk/pride/"). Records carry an id ("…/dataset/2023-205")."""
@@ -263,6 +281,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     # STAGE 3: fuse -> buckets (summary.csv headline + per_dataset + DFP-superset merged_output.csv)
     summary_rows, paper_rows, dataset_rows, merged_rows = fuse.fuse(per_paper, paper_meta=paper_meta)
     fuse.write_outputs(summary_rows, dataset_rows, merged_rows, OUT_DIR)
+    _write_run_info(OUT_DIR, TEXT_DIR, DFP_CSV, len(per_paper))
 
     own_open_papers = [r for r in paper_rows if r["has_own_open"]]
     print(f"\nRESULT ({len(per_paper)} papers):")

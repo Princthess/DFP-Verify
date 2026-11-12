@@ -1,5 +1,5 @@
 ---
-title: "Research data in full texts"
+title: "Research data in full texts: report"
 format:
   dashboard:
     theme: cosmo
@@ -109,6 +109,10 @@ OUT = os.environ.get("DV_OUT_DIR") or os.path.join("..", "output")
 EVERY_LABEL = dict(dtick=1, tickfont=dict(size=11), automargin=True)
 S = pd.read_csv(os.path.join(OUT, "summary.csv"), encoding="utf-8-sig", dtype=str).fillna("")
 D = pd.read_csv(os.path.join(OUT, "per_dataset.csv"), encoding="utf-8-sig", dtype=str).fillna("")
+# what this report is a snapshot of (written by run_pipeline.py; absent for runs before 2026-11-12)
+import json
+try:    RUN = json.load(open(os.path.join(OUT, "run_info.json"), encoding="utf-8"))
+except Exception: RUN = {}
 
 # ---- verdict categories: fixed order + fixed colours (colour follows the category, never its rank)
 # Shared own data is split by access: deposited with restricted access still counts as shared
@@ -216,13 +220,18 @@ OWN["paper"] = OWN.paper.map(lambda k: NAME.get(k, k))
 
 # Overview {scrolling="true"}
 
-## Row {height=56px}
+## Row {height=84px}
 
 ```{python}
 # Context, not results: how much was analysed. All percentages below are of the NB papers that may have
 # data of their own (papers saying they generated no data are left out).
 n_reuse = int(((S.reuse_signal != "") | (S.reuse_llm != "")).sum()) if "reuse_signal" in S else 0
-display(HTML(f'<div class="dv-context"><b>{N}</b> papers analysed'
+RUN_LINE = " · ".join(x for x in [
+    f"Snapshot of a run on <b>{RUN['run_date']}</b>" if RUN.get("run_date") else "",
+    f"corpus <b>{RUN['corpus']}</b>" if RUN.get("corpus") else "",
+    f"tool version {RUN['tool_version']}" if RUN.get("tool_version") else "",
+    "not live data: re-run the pipeline and render again to update"] if x)
+display(HTML(f'<div class="dv-context">{RUN_LINE}<br><b>{N}</b> papers analysed'
              + (f' · <b>{NB}</b> may have data of their own ({n_nogen} say{"s" if n_nogen == 1 else ""} no data '
                 f'were generated)' if n_nogen else "")
              + f' · <b>{len(OWN)}</b> own datasets found. Percentages below are of the {NB} papers.</div>'))

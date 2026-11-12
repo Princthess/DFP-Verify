@@ -141,7 +141,7 @@ breadcrumbs — just the answer). Columns:
 | `publisher` | the publisher (CSL `publisher` of the paper DOI), legal-form suffixes dropped ("Elsevier BV" → "Elsevier"); as the registry names it, no publisher list |
 | `has_das` | `yes` if the paper has a data availability statement, by either `das_pattern` or `das_llm` |
 | `das_pattern` | the statement's heading as written, found by pattern search (`statements.das_heading`): "Data availability (statement)", "Data accessibility", "Data and model availability statement", "Availability of data and materials", "Open Research" … written as a heading (capitalised, then a colon, a new sentence or a line end), so prose like "improves data availability" does not count |
-| `das_llm` | DFP's own `das_found` (`yes` / `no`). Where the two differ, the dashboard's Tool check lists the paper |
+| `das_llm` | DFP's own `das_found` (`yes` / `no`). Where the two differ, the report's Tool check lists the paper |
 | `supplement_signal` | the paper says its data are in the article or its supplementary files (`stated in paper: "All data is provided within the article and supplementary material …"`). Monitored, **not counted as shared**: a supplement has no DOI of its own and is often a PDF, and journals and FAIR guidance advise a data repository instead (PLOS Open Science Indicators also report supplements separately from repositories). The sentence must say the *data* are in the article / supplement; a bare "supplementary material is available online" (attached to every supplement, figures included) does not count, nor a sentence that also names a repository |
 | `supplement_llm` | the LLM's view of the same thing: names of the items DFP marked as supplementary material (`is_supplementary`). Broader than `supplement_signal` (it also lists supplements of figures or methods), shown side by side for comparison |
 | `reuse_signal` | the paper says it uses data from elsewhere, by pattern search (`statements.reuse`): "we use data from two studies", "using data originally reported in …", "data were obtained / downloaded from …" (not from participants, measurements, samples …), "publicly available dataset", "secondary data". A signal only: `reuses_data` / the verdict count verified reuse |
@@ -175,7 +175,7 @@ breadcrumbs — just the answer). Columns:
 
 Datasets that DataCite links to the paper but the paper does not cite are **not part of the verdict**:
 the verdict is about what the paper itself says. They are listed in `linked_via_datacite_not_in_paper`
-and in `note`, and on the dashboard's Tool check page.
+and in `note`, and on the report's Tool check page.
 
 A dataset id that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a
 DataCite-linked DOI **does** count, with a `note` showing the id as written and the registered DOI.
@@ -222,41 +222,49 @@ it; not counted) · `duplicate` (a web link to a dataset the same paper already 
 and its DataCite landing page, so no per-repository rules) · `homepage` (a link to a repository's
 front page, e.g. `https://snd.gu.se/en`, in a paper that also gives a confirmed record of its own data:
 almost always the repository named next to its record. Only applied when an own record is confirmed, so
-it never changes the verdict; listed on the dashboard's Tool check page) · `software` (the registry types the record as Software and the paper's words about it don't mention
+it never changes the verdict; listed on the report's Tool check page) · `software` (the registry types the record as Software and the paper's words about it don't mention
 data, e.g. "Source code for: …": code, not data, so not counted and not in the summary. A Software record
 the paper describes as holding data — "All code and associated data files are available from Zenodo",
 typical for GitHub releases on Zenodo — stays `confirmed`) · `not-data` (registry says cited article)
 · `noise` (unverified reference). Detect is
 deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
 
-### Dashboard (optional)
+### Report (optional)
 
-`dashboard/dashboard.qmd` is a Quarto + Plotly dashboard over `summary.csv` and `per_dataset.csv`. It
-recomputes nothing and makes no lookups. It has three pages:
-- **Overview**: share of papers sharing their own data, verdicts per publication year (count /
-  percent), verdicts per SSIF area (a paper with codes in two areas counts in both; papers not in
-  Swepub are grouped as *No SSIF field*, since OpenAlex topics don't map 1:1 onto SSIF), where own
-  datasets are deposited, and (if `field_norm.py` has run)
-  own datasets vs their own repositories per SSIF area — see *Repository reference* below.
+`dashboard/dashboard.qmd` builds a **report**: a static HTML page (Quarto dashboard layout + Plotly)
+over one run's `summary.csv`, `per_dataset.csv`, `merged_output.csv` and `selfcheck.csv`. It is a
+snapshot, not live data: it recomputes nothing and makes no lookups, and it changes only when the
+pipeline runs again and the page is rendered again. The top line says which run it shows — date,
+corpus and tool version, from `run_info.json`, which the pipeline writes next to the outputs (set
+`DV_CORPUS` to name the corpus; otherwise the text folder's name is used). That is what makes yearly
+reports comparable: keep each year's output folder and report, and note method changes between tool
+versions.
+
+Pages:
+- **Overview**: a context line, value boxes (all percent of the papers that may have data of their
+  own; papers saying they generated no data are left out), the data verdict per publication year,
+  for all papers and per SSIF area (count / percent), licences of own datasets, papers that reuse
+  others' data, and (if `field_norm.py` has run) own datasets vs what is usual in their repositories.
+- **Publishers & repositories**: data availability statement by verdict and per publisher, the verdict
+  per publisher (publishers with fewer than 4 papers pooled), repositories with open / restricted
+  datasets, and whether each dataset's record links back to the paper.
 - **Tool check**: monitoring the tool itself. Which source found each dataset (DFP and regex, one of
   them, or only DataCite), the self-check score, and a to-do list of what to check by hand: broken
-  ids (repaired, dead declared links, data statements without an id), rows where DFP and DFP-Verify
-  differ, known datasets the text detectors didn't find, and paper-DOI corrections. Each row says
-  what the issue means and what to do. Built from `per_dataset.csv`, `merged_output.csv` and
-  `selfcheck.csv`.
+  ids, rows where DFP and DFP-Verify differ, known datasets the text detectors didn't find, and
+  paper-DOI corrections. Each row says what the issue means and what to do.
 - **Papers**: the summary table.
 
 Every chart card has a **Data** tab next to the chart: the rows behind it as a table, plus CSV
-downloads of the counts (as plotted) and of the rows. The tabs stay available when a card is
-expanded. The to-do list and the papers table have the same CSV download.
+downloads of the counts (as plotted) and of the rows.
 
 ```
 pip install -r requirements-dashboard.txt          # plotly, pandas, jupyter (+ install Quarto)
 QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads output/, or DV_OUT_DIR
+# a second corpus into its own file:
+DV_OUT_DIR=$PWD/output_mycorpus quarto render dashboard/dashboard.qmd --output dashboard_mycorpus.html
 ```
-The result is a self-contained `dashboard/dashboard.html` (not committed). Run on a whole
-institution's full texts, the year chart shows the trend over time.
-
+The result is `dashboard/dashboard.html` (not committed). Quarto writes an `--output` file to the repo
+root; move it into `dashboard/`, next to `dashboard_files/`, which it shares.
 ### Repository reference for dataset openness (optional)
 
 `python field_norm.py` (after the pipeline) compares each own DataCite dataset with **the other
@@ -277,7 +285,7 @@ they answer what you may do with the data, not whether it is shared or open.
 
 Writes `output/field_norm.csv` (reference per repository × area, and per whole repository) and
 `output/field_norm_datasets.csv` (each own dataset with the reference it is compared to). The
-dashboard shows own vs expected per SSIF area on the Overview page when the files exist.
+report shows own vs usual per SSIF area on the Overview page when the files exist.
 
 Why not all of DataCite: only a few registrants put field subjects on datasets (figshare is 44–90 %
 of five areas, the specimen registry DiSSCo 74 % of Natural sciences, at 2026-11-09), so an
