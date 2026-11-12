@@ -57,3 +57,7 @@ dashboard/dashboard_files/
 dashboard/.quarto/
 .quarto/
 dashboard/dashboard_*.html
+
+# local working docs for Claude (status, decisions; candid, not shared)
+PROGRESS.md
+DECISIONS.md
