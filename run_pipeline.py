@@ -38,7 +38,8 @@ def _write_run_info(out_dir, text_dir, dfp_csv, n_papers):
     td = os.path.abspath(text_dir)
     corpus = os.environ.get("DV_CORPUS") or os.path.basename(os.path.dirname(td) if os.path.basename(td).startswith("_") else td)
     info = {"run_date": datetime.date.today().isoformat(), "corpus": corpus, "papers": n_papers,
-            "tool_version": version, "llm_csv": os.path.basename(dfp_csv or "")}
+            "tool_version": version, "llm_csv": os.path.basename(dfp_csv or ""),
+            "org_name": os.environ.get("DV_ORG_NAME", "")}   # whose Zenodo communities count as "ours"
     json.dump(info, open(os.path.join(out_dir, "run_info.json"), "w", encoding="utf-8"), indent=1)
 
 def _homepage(url):
@@ -214,6 +215,12 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                         and not SAYS_DATA.search(c.get("evidence") or "")):
                     c["status"] = "software"
                 n += 1
+    # Zenodo: which community holds each own dataset ("slug: title"). "Ours" is decided in the report by
+    # the organisation's name (DV_ORG_NAME) in the community title -- no list of communities to keep.
+    for cands in per_paper.values():
+        for c in cands:
+            if c.get("status") == "confirmed" and c.get("kind") == "doi" and "zenodo" in c["identifier"].lower():
+                c["zenodo_community"] = "; ".join(f"{s}: {t}" for s, t in meta.zenodo_communities(c["identifier"]))
     # A sequencing run with no provenance signal of its own (ERR1995253) belongs to a study; when the paper
     # also cites that study (ERP022986) and we know whose it is, the run is the same: ENA says which study.
     n_run = 0

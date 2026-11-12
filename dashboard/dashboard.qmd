@@ -299,7 +299,6 @@ for v in ORDER:
 _ = fig.update_layout(barmode="stack", xaxis=dict(type="category"))
 _ = style(fig).update_layout(margin=dict(t=36))
 display(NORM_BTNS); display(fig)
-how("<b>Percent</b> shows each year as shares.")
 ```
 
 ```{python}
@@ -444,8 +443,8 @@ for k in ["stated", "llm", "none"]:
 _ = fig.update_layout(barmode="stack")
 _ = style(fig).update_layout(margin=dict(t=36), legend=dict(orientation="h", y=-0.15, traceorder="normal"))
 display(NORM_BTNS); display(fig)
-how("Not verified and not part of the result: reused data are rarely cited with an id. "
-    "<b>Only the LLM</b> is less certain than what the text itself says.")
+how("Papers that use other people's data. Not part of the sharing results: reused data rarely have "
+    "an id we can check. When only the LLM says so, it is less certain.")
 ```
 
 ```{python}
@@ -682,6 +681,46 @@ data_tab(TR[["paper", "identifier", "repository", "back", "registry"]].rename(co
          counts=bt.rename(columns={**BACKL, "n": "datasets"}).iloc[::-1].reset_index())
 ```
 
+## Row {height=360px}
+
+### Column {.tabset}
+
+```{python}
+#| title: "Zenodo: own datasets by community"
+# A community is "ours" when its title contains the organisation's name (DV_ORG_NAME at run time, in
+# run_info.json) -- department communities count too, no list of communities to keep.
+ORG = (RUN.get("org_name") or "").strip()
+ZO = OWN[OWN.repository == "Zenodo"].copy()
+if "zenodo_community" not in ZO: ZO["zenodo_community"] = ""
+def zgroup(s):
+    comms = [c.split(": ", 1) for c in s.split("; ") if c]
+    ours = [t or slug for slug, t in comms if ORG and ORG.lower() in (t or "").lower()]
+    if ours:                       # "Chalmers University of Technology, Department of Physics, ..." -> the rest
+        rest = re.sub(rf"^[^,]*{re.escape(ORG)}[^,]*,?\s*", "", ours[0], flags=re.I).strip() or "whole organisation"
+        return f"{ORG}: " + (rest[:45] + "…" if len(rest) > 45 else rest)
+    return "Other community" if comms else "No community"
+ZO["group"] = ZO.zenodo_community.fillna("").map(zgroup)
+zt = ZO.group.value_counts()
+zorder = [g for g in zt.index if g.startswith(f"{ORG}:")] + [g for g in ("Other community", "No community") if g in zt]
+zt = zt.reindex(zorder[::-1])
+zcol = [SLATE[0] if g.startswith(f"{ORG}:") else SLATE[1] if g == "Other community" else SLATE[2] for g in zt.index]
+fig = go.Figure(go.Bar(y=zt.index, x=zt.values, orientation="h", marker_color=zcol,
+                       text=zt.values, textposition="outside", textfont=dict(color=INK2), cliponaxis=False,
+                       hovertemplate="%{y}: %{x} dataset(s)<extra></extra>"))
+_ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(zt.max(), 1) * 1.25]), showlegend=False,
+                             yaxis=EVERY_LABEL)
+display(fig)
+how((f"A community counts as {ORG}'s when its title contains “{ORG}”. " if ORG else
+     "Set DV_ORG_NAME (e.g. Chalmers) to mark your own communities. ")
+    + "Communities from Zenodo's own records.")
+```
+
+```{python}
+#| title: "Data"
+data_tab(ZO[["paper", "identifier", "group", "zenodo_community"]].sort_values(["group", "paper"]), "zenodo_communities",
+         counts=zt.iloc[::-1].rename_axis("community").reset_index(name="datasets"))
+```
+
 # Tool check {scrolling="true"}
 
 ```{python}
@@ -894,7 +933,6 @@ for g in [G_ID, G_TOOLS, G_PAPER]:
 _ = style(fig).update_layout(xaxis=dict(visible=False, range=[0, max(qc.n.max(), 1) * 1.25]),
                              yaxis=dict(categoryorder="array", categoryarray=list(qc.issue), **EVERY_LABEL), legend=dict(y=-0.12))
 display(fig)
-how("The table below says what each issue means and what to do.")
 ```
 
 ```{python}

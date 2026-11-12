@@ -187,7 +187,10 @@ Data Service*, *Chalmers University of Technology / DORIS repository*, *SciLifeL
 University of Technology* for all three Chalmers cases). The summary's `datasets` cell and
 `dv_repository` use the repository. Its
 `subject` column holds the dataset's own subjects from DataCite (SSIF from SND, FOS from many
-repositories) — a cross-check against the paper's `field`, never the anchor.
+repositories) — a cross-check against the paper's `field`, never the anchor. `zenodo_community` lists
+the Zenodo communities of an own Zenodo dataset (`slug: title`, from Zenodo's API). The report counts a
+community as the organisation's own when its title contains `DV_ORG_NAME` (e.g. `DV_ORG_NAME=Chalmers` in
+`.env`), so department communities count too; there is no list of communities.
 
 **`merged_output.csv` — the reconciliation / audit view.** A strict superset of a DFP row: DFP's 16
 columns verbatim (`file … vlm`), then DFP-Verify's `dv_` columns. A blank DFP column = the id came from

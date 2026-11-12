@@ -107,6 +107,30 @@ class MetaCache:
                              "license": lic, "type": "Software" if m.get("type") == "software" else ""}
             time.sleep(0.05)
         return self.d[k]
+    def zenodo_communities(self, doi):
+        """Zenodo communities a Zenodo record belongs to, as [(slug, title)], from Zenodo's own API (more
+        complete than DataCite's relatedIdentifiers). Cached. [] for non-Zenodo DOIs or on no answer."""
+        m = re.match(r"(?i)^10\.5281/zenodo\.(\d+)$", doi or "")
+        if not m: return []
+        k = "zcomm|" + m.group(1)
+        if k not in self.d:
+            try:
+                r = S.get(f"https://zenodo.org/api/records/{m.group(1)}", timeout=20)
+                if r.status_code != 200: return []
+                j = r.json()
+                ids = [c.get("id") for c in (j.get("metadata", {}).get("communities") or []) if c.get("id")]
+                ids = ids or list((j.get("parent", {}).get("communities") or {}).get("ids") or [])
+                out = []
+                for cid in ids:
+                    c = S.get(f"https://zenodo.org/api/communities/{cid}", timeout=20)
+                    cj = c.json() if c.status_code == 200 else {}
+                    out.append([cj.get("slug") or cid, (cj.get("metadata") or {}).get("title") or ""])
+                    time.sleep(0.1)
+                self.d[k] = out
+            except Exception:
+                return []                                      # network error: don't cache
+        return [tuple(x) for x in self.d[k]]
+
     def run_study(self, acc):
         """The INSDC study (and project) a run / experiment / sample belongs to, from ENA:
         ERR1995253 -> {'ERP022986', 'PRJEB20178'}. Empty set if unknown. Cached."""

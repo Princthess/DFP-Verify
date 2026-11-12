@@ -281,7 +281,8 @@ def fuse(per_paper, paper_meta=None):
                                  "status": c.get("status", ""), "confidence": _confidence(c),
                                  "verdict": c.get("verdict", ""), "provenance": c.get("provenance", ""),
                                  "openness": c.get("openness", ""), "repository": c.get("repository", ""),
-                                 "publisher": c.get("publisher", ""), "license": c.get("license", ""), "subject": c.get("subject", "")})
+                                 "publisher": c.get("publisher", ""), "license": c.get("license", ""), "subject": c.get("subject", ""),
+                                 "zenodo_community": c.get("zenodo_community", "")})
             # the DFP-shaped output carries DFP's rows + DFP-Verify's genuine additions,
             # but NOT pure regex noise (ref-list DOIs we neither confirmed nor saw declared).
             st = c.get("status", "")
@@ -312,7 +313,7 @@ def write_outputs(summary_rows, dataset_rows, merged_rows, out_dir):
         w = csv.DictWriter(f, fieldnames=["paper", "identifier", "kind", "source", "registry", "found_in",
                                           "found_in_all", "in_das", "status",
                                           "confidence", "verdict", "provenance", "openness",
-                                          "repository", "publisher", "license", "subject"])
+                                          "repository", "publisher", "license", "subject", "zenodo_community"])
         w.writeheader(); w.writerows(dataset_rows)
     with open(os.path.join(out_dir, "merged_output.csv"), "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=DFP_COLS + DV_COLS)
