@@ -1,339 +1,75 @@
 # DFP-Verify
 
-A deterministic **verification layer** for open-data detection. It takes the dataset candidates a
-detector found in a paper and checks them against authoritative registries — confirming real datasets,
-flagging cited articles mislabelled as data, and deciding own-vs-reused and open-vs-restricted. Per
-paper it answers: **did the authors share their own data, and is it open?**
+Answers, per paper: **did the authors share their own data, and is it open?**
 
-It sits on top of **[datasets-from-pdf (DFP)](https://github.com/ChalmersLibrary/datasets-from-pdf)** —
-a separate LLM-based detector in its own repo. **None of DFP's code is in here;** this repo is only the
-verification layer. Two ways to use it:
+Takes the dataset candidates that **[datasets-from-pdf (DFP)](https://github.com/ChalmersLibrary/datasets-from-pdf)**
+found, adds a pattern search of the full text, and checks each candidate against public registries (DataCite,
+doi.org, Crossref, ENA, PRIDE, NCBI): real dataset or not, the authors' own or reused, open or restricted.
+No LLM runs here, and none of DFP's code is in this repo.
 
-- **Version A — verify an existing DFP run.** You already have DFP's output CSV; DFP-Verify just
-  verifies it, and nothing from DFP runs. *This is the core.*
-- **Version B — one command.** DFP-Verify also runs DFP for you (it shells out to DFP's CLI via
-  `dfp_live.py`, our adapter) and then verifies. Needs DFP installed; the verification is identical.
+**Requirements**
 
-## How it works
+- Python 3 (tested on 3.14)
+- DFP's output CSV and the papers as `.txt` files (DFP writes both)
 
-DFP's LLM reads the data-availability and references sections; a regex pass covers the rest of the
-full text, and everything is then **verified against registries** — which confirms the real datasets
-and filters the false positives any LLM detector produces (e.g. a cited article read as data).
-DataCite is also asked the reverse question — which datasets point at this paper? — to corroborate
-ids, repair malformed ones, and report linked datasets the paper itself doesn't cite.
-Candidates are graded by how much the detectors agree:
+**Installation**
 
-1. **detect** (`detect_union.py`) — DFP's ids ∪ regex (DOIs, Swedish SND / SciLifeLab / DORIS
-   prefixes, accessions, Zenodo / GitHub / OSF / data-repo URLs, split-line repair). Max recall.
-2. **verify** (`verify.py`) — DOI → DataCite type-check, accession → archive API, URL → resolve.
-   Only 404/410 count as a dead link; bot protection (e.g. figshare's AWS WAF challenge, HTTP 202) or
-   no answer gives `unchecked link` (status `likely-unchecked`), to open by hand. A DOI is dead only
-   when doi.org says 404/410; a rate limit or server error is retried next run, never cached as dead.
-   An id that is dead as written but resolves without a glued tail (a footnote number or the next
-   word: `bath-00739.28`, `…/tree/main.Rece`) is used without it, noted like a repair.
-   A Zenodo record URL from the LLM is turned into its DOI, as the regex pass already does.
-   Deterministic, disk-cached.
-3. **registry links** (`registry_lookup.py`) — the reverse direction: which datasets does DataCite
-   tie to *this paper*? The paper DOI is first checked (its record's title must match the first page;
-   else DOIs on the first page, else a Crossref title search). Then DataCite records pointing at it are
-   merged in: an id already in the text is corroborated (`linked`), a declared id that didn't resolve
-   but is a near-miss of a linked DOI is repaired (`repaired`), a dataset whose landing page is cited
-   instead of its DOI (e.g. an SND catalogue URL) is found by the identifier-like end of that URL
-   (`linked (landing page in text)`), and the rest are reported as `not in text` — **not counted as
-   shared** (see Output). Version/concept DOIs of one dataset are collapsed. Nothing here is
-   repository-specific: what to look for comes from each DataCite record. Disk-cached.
-4. **classify** (`classify.py`) — provenance (own/reused) + openness. Own/reused priority: ORCID
-   overlap between dataset creators and paper authors → creator surnames on the paper's first page
-   → an explicit own-data phrase in the evidence/DAS sentence ("we deposited", "generated in this
-   study", "our data"; not when the sentence names an outside source: "obtained from", "provided by")
-   → DFP's flag → references-location; otherwise `unknown`
-   (never guessed). Licence and access right (open / restricted) come from the DataCite record;
-   a `restrictedAccess` dataset is `restricted`.
-   **field** (`fields.py`) — anchors each paper to a research field: its SSIF codes in Swepub (found by
-   DOI; names from Swepub's own subject list), else OpenAlex's primary topic. Cached.
-5. **fuse** (`fuse.py`) — roll up to per-paper verdicts: the headline `summary.csv` plus the audit
-   files `per_dataset.csv` and `merged_output.csv`.
+    git clone https://github.com/Princthess/DFP-Verify
+    cd DFP-Verify
+    python -m venv .venv
+    .venv\Scripts\activate              (macOS/Linux: source .venv/bin/activate)
+    pip install -r requirements.txt
 
-`sections.py` locates each id (das / body / supplement / references) with a regex heading locator —
-the DAS-membership signal and a cheap provenance nudge. `statements.py` finds what the paper itself
-says about its data (no data generated, on request, in the supplement, reuse, the data-availability
-heading) — the `*_signal` / `das_pattern` columns. `patterns.py` holds the identifier patterns shared
-between steps; `net.py` the one HTTP session (User-Agent with your contact address) every registry call
-uses; `selfcheck.py` the recall check against DataCite links.
+Copy `.env.example` to `.env` and fill in the three lines at the top. The other settings are explained there.
 
-## First-time setup
+**Usage**
 
-Do this once. Everything runs **inside the `DFP-Verify` folder** unless noted.
+- Verify a DFP run: `python run_pipeline.py`
+- Run DFP first, then verify: `python run_integrated.py` (needs DFP and its LLM endpoint; see below)
 
-**1 — Get this repo + a Python environment**
-```
-git clone https://github.com/Princthess/DFP-Verify
-cd DFP-Verify
-python -m venv .venv
-.venv\Scripts\activate            # Windows   (macOS/Linux: source .venv/bin/activate)
-pip install -r requirements.txt
-```
+Results go to `output/`. `summary.csv` has one row per paper with its verdict, e.g. `shared own data (open)`,
+`own data on request only (not shared)` or `no data found`. Registry answers are cached, so a second run only
+looks up what is new. All files and columns: [docs/output.md](docs/output.md). The steps: [docs/how-it-works.md](docs/how-it-works.md).
 
-**2 — Make your config file.** Copy `.env.example` → `.env` and set `DV_CONTACT_EMAIL` to your email
-(used politely in registry API calls). You'll add paths below.
+**Optional**
 
-**3 — Point it at DFP.** DFP is a *separate* tool — pick the path for what you'll run:
-
-- **Only Version A** (verify an existing DFP output): you just need DFP's **output CSV** + its `.txt`
-  texts. In `.env` set `DV_DFP_CSV` and `DV_TEXT_DIR` to those files. **Done — skip the rest.**
-- **Version B** (run DFP yourself): clone DFP into a folder of your choice (anywhere, *outside* this repo):
-  ```
-  git clone https://github.com/ChalmersLibrary/datasets-from-pdf
-  ```
-  Then in `.env` set:
-  - `DV_DFP_DIR` = the folder that contains DFP's `main.py`
-  - `DV_PDF_DIR` = your folder of PDFs
-  - and make sure **DFP's own `.env`** (the LiteLLM endpoint: `LITELLM_BASE_URL` / `VLM_MODEL` /
-    optional `LITELLM_API_KEY`) sits *inside* `DV_DFP_DIR` — see DFP's own README.
-
-## Running it
-
-Once set up, activate the venv per session (`.venv\Scripts\activate`), then just:
-
-```
-python run_pipeline.py        # Version A — verify an existing DFP run   (no VPN)
-python run_integrated.py      # Version B — run DFP + verify             (VPN on for the HPC endpoint)
-```
-(`run_integrated.py` also takes a PDF folder as an argument, overriding `DV_PDF_DIR`.)
-
-**Results** land in `DV_OUT_DIR` (default `output/` for A, `output_integrated/` for B):
-`summary.csv` (the headline — one row per paper, plain verdict), `per_dataset.csv` and
-`merged_output.csv` (detail / audit), `selfcheck.csv` (detector self-test), and `dfp_output.csv`
-(vanilla DFP). Registry lookups cache to
-disk, so re-runs only do new work. Version B's most common failure is the LLM endpoint being
-unreachable (VPN off) or a wrong model tag; DFP continues past any PDF that fails.
-
-### Config variables (all live in `.env`; a shell `set DV_...` overrides)
-| variable | required? | what |
-|---|---|---|
-| `DV_CONTACT_EMAIL` | recommended | your email, sent politely in registry API requests |
-| `DV_DFP_CSV` / `DV_TEXT_DIR` | **yes (A)** | DFP's output CSV / folder of paper `.txt` |
-| `DV_PDF_DIR` / `DV_DFP_DIR` | **yes (B)** | your PDFs / DFP install (the folder with `main.py`). `DV_PDF_DIR` is optional in A: used only to tell *why* a dataset id was broken |
-| DFP's own `.env` (in `DV_DFP_DIR`) | **yes (B, litellm)** | `LITELLM_BASE_URL`, `VLM_MODEL` (+ `LITELLM_API_KEY` if needed) |
-| `DV_BACKEND` | no | `litellm` (default) or `ollama` |
-| `DV_MODEL` · `DV_OUT_DIR` · `DV_NO_REFS` | no | model override · output dir · skip DFP's references pass |
-
-## Output
-
-**`summary.csv` — the headline.** One row per paper, the *combined* verdict (no DFP-vs-regex
-breadcrumbs — just the answer). Columns:
-
-| column | what |
+| | needs |
 |---|---|
-| `paper` · `doi` | the file, and its title-checked paper DOI (`note` says if it was corrected or unconfirmed) |
-| `year` | publication year from the paper DOI's own metadata (blank when the DOI is unconfirmed) |
-| `data_verdict` | one of the verdicts below |
-| `openness` | for the authors' own data: open / restricted / unknown / mixed |
-| `datasets` | every confirmed dataset the paper cites, tagged `own:` / `reused:`, plus `declared?:` for declared ids that didn't verify |
-| `linked_via_datacite_not_in_paper` | datasets DataCite links to the paper that the paper does **not** cite — reported, **not counted** |
-| `reuses_data` | yes / no |
-| `field` · `field_source` | the paper's research field, for field normalisation: SSIF codes from the paper's Swepub record(s) (`swepub (SSIF)`); else SSIF codes from Swepub's own automatic classifier run on the title + abstract from OpenAlex (`swepub classify (SSIF, automatic)`, 3-digit level; on the corpus its top suggestion matched the manual Swepub area every time it suggested one, 14/16); else OpenAlex's automatic topic (`openalex (ASJC, automatic)`). Set for every paper with a checked DOI, with or without data. The SSIF area is the code's first digit |
-| `work_type` | OpenAlex work type of the checked paper DOI (article, review, editorial …). Reported only: not used as a no-data signal (reviews and meta-analyses do produce data; editorials etc. are a question of what to count as a research article) |
-| `no_data_signal` | the paper says it has no data of its own: the sentence found by pattern search (`stated in paper: "No new data were generated…"`; generic data-policy template phrasings). Empty otherwise |
-| `no_data_llm` | reserved for an LLM's own judgment of the same question, to compare with `no_data_signal`; empty for now |
-| `on_request_signal` | the paper says its data are available on request (`stated in paper: "Data will be made available on request."`): the data exist but are not deposited. Filled for every paper that says it, also papers that deposit some of their data. The sentence must be about giving out data, and not name a repository or identifier (a deposit with access on request is restricted access, i.e. shared) |
-| `journal` | the journal the paper appeared in (CSL `container-title` of the paper DOI); blank for reports, blogs, papers without a confirmed DOI |
-| `publisher` | the publisher (CSL `publisher` of the paper DOI), legal-form suffixes dropped ("Elsevier BV" → "Elsevier"); as the registry names it, no publisher list |
-| `has_das` | `yes` if the paper has a data availability statement, by either `das_pattern` or `das_llm` |
-| `das_pattern` | the statement's heading as written, found by pattern search (`statements.das_heading`): "Data availability (statement)", "Data accessibility", "Data and model availability statement", "Availability of data and materials", "Open Research" … written as a heading (capitalised, then a colon, a new sentence or a line end), so prose like "improves data availability" does not count |
-| `das_llm` | DFP's own `das_found` (`yes` / `no`). Where the two differ, the report's Tool check lists the paper |
-| `supplement_signal` | the paper says its data are in the article or its supplementary files (`stated in paper: "All data is provided within the article and supplementary material …"`). Monitored, **not counted as shared**: a supplement has no DOI of its own and is often a PDF, and journals and FAIR guidance advise a data repository instead (PLOS Open Science Indicators also report supplements separately from repositories). The sentence must say the *data* are in the article / supplement; a bare "supplementary material is available online" (attached to every supplement, figures included) does not count, nor a sentence that also names a repository |
-| `supplement_llm` | the LLM's view of the same thing: names of the items DFP marked as supplementary material (`is_supplementary`). Broader than `supplement_signal` (it also lists supplements of figures or methods), shown side by side for comparison |
-| `reuse_signal` | the paper says it uses data from elsewhere, by pattern search (`statements.reuse`): "we use data from two studies", "using data originally reported in …", "data were obtained / downloaded from …" (not from participants, measurements, samples …), "publicly available dataset", "secondary data". A signal only: `reuses_data` / the verdict count verified reuse |
-| `reuse_llm` | the LLM's view: names of data DFP says the authors did not create (`created_by_authors` = false), software (`is_code`) left out. Often cited without an id (a benchmark, a public data file), so not verifiable; shown side by side with `reuse_signal` |
-| `note` | dead declared links, repaired ids, DataCite-only links, paper-DOI corrections, a no-data statement in a paper that cites own data |
+| Research field per paper (Swepub, OpenAlex). On by default; `DV_FIELDS=off` skips it | — |
+| HTML report: `dashboard/dashboard.qmd` | Quarto, `requirements-dashboard.txt` |
+| Comparison with RoAgg: `roagg_compare.py` | RoAgg |
+| Openness compared with the rest of each repository: `field_norm.py` | — |
 
-`data_verdict`, in priority order:
-- **`shared own data (open)`** — the paper points to its own data, and DataCite says it is open.
-- **`shared own data (restricted access)`** — the paper points to its own data, deposited with a DOI
-  and metadata but with access on conditions (e.g. personal data); also used when some of the
-  paper's datasets are open and some restricted (`openness` = `mixed`). **Counts as shared**
-  ("as open as possible, as closed as necessary"), but is never reported as open. Data "available on
-  request" without a deposit do not count.
-- **`shared own data (access unknown)`** — no access information in the metadata.
-- **`declared, unverifiable`** — stated in the data-availability statement but the id doesn't resolve
-  (a dead dataset DOI is itself a FAIR red flag).
-- **`own data in article / supplement only (not deposited)`** — the paper deposits nothing but says its
-  data are in the article or its supplementary files (`supplement_signal`). **Not counted as shared**
-  (no DOI of its own, often PDF); ranks above "on request" because the reader can download the files.
-- **`own data on request only (not shared)`** — the paper deposits nothing but says its data are
-  available on request (`on_request_signal`). **Not counted as shared.**
-- **`reuses data only`**
-- **`no data generated (paper says so)`** — no data found, and `no_data_signal` is set: the paper
-  itself says it generated no data ("data sharing is not applicable …").
-- **`cites data, own or reused unclear`** — the paper cites a verified dataset, but no signal says whose
-  it is (no creator metadata or ORCID, no clear own/reuse sentence, no LLM judgement). Not counted as
-  own; listed on Tool check. A sequencing run (ERR…/SRR…) whose study the paper also cites gets that
-  study's own/reused first (ENA says which study a run belongs to).
-- **`no data found`** — everything else without data: not shared, *or* no data; the tool can't tell
-  which.
+How to run these: [docs/optional-extras.md](docs/optional-extras.md).
 
-Datasets that DataCite links to the paper but the paper does not cite are **not part of the verdict**:
-the verdict is about what the paper itself says. They are listed in `linked_via_datacite_not_in_paper`
-and in `note`, and on the report's Tool check page.
+**Running DFP too**
 
-A dataset id that *is* in the paper but didn't resolve as written (typo, PDF line-break) and matches a
-DataCite-linked DOI **does** count, with a `note` showing the id as written and the registered DOI.
+Clone DFP outside this folder, then set `DV_DFP_DIR` (the folder with DFP's `main.py`) and `DV_PDF_DIR` in
+`.env`. DFP needs its own `.env` with its LLM endpoint; see DFP's README. The most common failure is the
+endpoint being unreachable (VPN off) or a wrong model name.
 
-**`per_dataset.csv`** — one row per candidate, all of them incl. regex noise (the audit dump).
-`repository` is the repository that registered the DOI (the DataCite client, e.g. *Swedish National
-Data Service*, *Chalmers University of Technology / DORIS repository*, *SciLifeLab Data Repository*,
-*Zenodo*); `publisher` is DataCite's publisher field, the responsible institution (e.g. *Chalmers
-University of Technology* for all three Chalmers cases). The summary's `datasets` cell and
-`dv_repository` use the repository. Its
-`subject` column holds the dataset's own subjects from DataCite (SSIF from SND, FOS from many
-repositories) — a cross-check against the paper's `field`, never the anchor. `zenodo_community` lists
-the Zenodo communities of an own Zenodo dataset (`slug: title`, from Zenodo's API). The report counts a
-community as the organisation's own when its title contains `DV_ORG_NAME` (e.g. `DV_ORG_NAME=Chalmers` in
-`.env`), so department communities count too; there is no list of communities.
+**Checking it works**
 
-**`merged_output.csv` — the reconciliation / audit view.** A strict superset of a DFP row: DFP's 16
-columns verbatim (`file … vlm`), then DFP-Verify's `dv_` columns. A blank DFP column = the id came from
-the regex pass or DataCite, not DFP (`dv_detected_by` says which). `dv_disagreement` names where the two tools differ and which signal decided
-(e.g. `isdata: DFP=dataset, registry=not-data`); `dv_provenance_by` records the deciding signal per row.
-`dv_paper_doi` is the title-checked paper DOI (= summary's `doi`; DFP's own `paper_doi` stays verbatim),
-with `dv_paper_doi_check` = confirmed / corrected / found / unconfirmed. `dv_year`, `dv_field` /
-`dv_field_source` repeat the paper's year and field on each row (same as summary's `year`, `field` /
-`field_source`).
-`dv_registry` shows the DataCite reverse-lookup result per row: `linked` (in the text and linked in
-DataCite) · `repaired (text had …)` · `linked (landing page in text)` (cited by its landing-page URL;
-counts) · `not in text` (found only via DataCite; status `datacite-only`, not counted) · blank (no link).
-`dv_provenance_by` = `orcid-overlap` / `creator-overlap` / `own-verb` / `dfp-flag` / `location`.
-Open this when you want to see *why* a verdict came out the way it did.
+| | checks |
+|---|---|
+| `python -m unittest discover tests` | text reading and verdict rules, on made-up examples (no internet, 1 s) |
+| `python check_apis.py` | that each outside service still answers as expected; names the step a failure affects (~15 s) |
+| `python tests/compare_runs.py <before> <after>` | whether a code change moved any paper's result |
 
-**`selfcheck.csv` — how well the text detectors did, measured automatically.** Datasets that DataCite
-links to the paper *and* that the paper cites (DOI, malformed DOI, or landing page) are a small free
-answer key: a detector should have found them. One row per such dataset: `cited_as`, `result` (`found`
-/ `found, id broken` / `not found by text detectors`), `found_by` (DFP / regex), and for broken ids
-`broken_id_cause`: `pdf-extraction` (the PDF itself has the right DOI — link target or text — and the
-`.txt` extraction broke it) or `as-printed` (the published PDF prints a wrong id). The cause check reads
-the PDFs, so set `DV_PDF_DIR` (optional in Version A). A summary also prints after each run. Biased to
-data with DataCite backlinks (SND / Chalmers deposits); "on request" statements are not measured.
+A service being down does not crash a run: failed lookups are not cached and are tried again next time.
 
-**Status tiers** (inside the detail files): `confirmed` (registry says dataset/software) · `likely-*`
-(declared in the DAS but unverifiable; `likely-wrong-type` = the paper's data statement gives it as its
-data, but the registry types it as something else, e.g. a Zenodo upload typed "Journal article" or an OSF
-project) · `software` also covers declared GitHub / GitLab / Bitbucket links whose description and path
-don't mention data · `datacite-only` (linked to the paper in DataCite, not cited in
-it; not counted) · `duplicate` (a web link to a dataset the same paper already cites by DOI, e.g.
-`zenodo.org/records/N` next to `10.5281/zenodo.N`; matched on the link's id-like end against the DOI
-and its DataCite landing page, so no per-repository rules) · `homepage` (a link to a repository's
-front page, e.g. `https://snd.gu.se/en`, in a paper that also gives a confirmed record of its own data:
-almost always the repository named next to its record. Only applied when an own record is confirmed, so
-it never changes the verdict; listed on the report's Tool check page) · `software` (the registry types the record as Software and the paper's words about it don't mention
-data, e.g. "Source code for: …": code, not data, so not counted and not in the summary. A Software record
-the paper describes as holding data — "All code and associated data files are available from Zenodo",
-typical for GitHub releases on Zenodo — stays `confirmed`) · `not-data` (registry says cited article)
-· `noise` (unverified reference). Detect is
-deliberately noisy — "15 confirmed of ~470 candidates" is the filter working, not failing.
+**Status**
 
-### Report (optional)
+Early-stage. Tested on a 20-paper and a 78-paper corpus. Known limits:
 
-`dashboard/dashboard.qmd` builds a **report**: a static HTML page (Quarto dashboard layout + Plotly)
-over one run's `summary.csv`, `per_dataset.csv`, `merged_output.csv` and `selfcheck.csv`. It is a
-snapshot, not live data: it recomputes nothing and makes no lookups, and it changes only when the
-pipeline runs again and the page is rendered again. The top line says which run it shows — date,
-corpus and tool version, from `run_info.json`, which the pipeline writes next to the outputs (set
-`DV_CORPUS` to name the corpus; otherwise the text folder's name is used). That is what makes yearly
-reports comparable: keep each year's output folder and report, and note method changes between tool
-versions.
+- Data without an identifier ("on request", a repository name only) can be categorised, not verified.
+- Licence and access come from DataCite, so they are blank for data registered elsewhere (e.g. accessions).
+- The DataCite lookup needs the paper's DOI, and only sees links a repository recorded. SND and Chalmers'
+  repository usually record them, Zenodo and figshare deposits often don't. No link is not evidence of no data.
+- Open code is out of scope.
 
-Pages:
-- **Overview**: a context line, value boxes (all percent of the papers that may have data of their
-  own; papers saying they generated no data are left out), the data verdict per publication year,
-  for all papers and per SSIF area (count / percent), licences of own datasets, papers that reuse
-  others' data, and (if `field_norm.py` has run) own datasets vs what is usual in their repositories.
-- **Infrastructure**: under which policies, in which repositories, and does the metadata reach the
-  data? Data availability statement by verdict and per publisher, the verdict per publisher
-  (publishers with fewer than 4 papers pooled), repositories with open / restricted datasets, whether
-  each dataset's record links back to the paper, Zenodo communities, and (if `roagg_compare.py` has
-  run) which own datasets RoAgg finds, why the others are missing, and what could improve for whom.
-- **Tool check**: how far to trust the numbers. Which source found each dataset, the self-check score,
-  and a to-do list of what to check by hand. Each row has a **possible cause** — the paper, the
-  dataset's record, the paper list (given DOI), this tool, or **Unclear** (named only with evidence: the
-  PDF, the registry record, two methods disagreeing) — who can act, and what it means / what to do.
-- **Papers**: the summary table.
+**Credits**
 
-Every chart card has a **Data** tab next to the chart: the rows behind it as a table, plus CSV
-downloads of the counts (as plotted) and of the rows.
-
-```
-pip install -r requirements-dashboard.txt          # plotly, pandas, jupyter (+ install Quarto)
-QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads output/, or DV_OUT_DIR
-# a second corpus into its own file:
-DV_OUT_DIR=$PWD/output_mycorpus quarto render dashboard/dashboard.qmd --output dashboard_mycorpus.html
-```
-The result is `dashboard/dashboard.html` (not committed). Quarto writes an `--output` file to the repo
-root; move it into `dashboard/`, next to `dashboard_files/`, which it shares.
-### Comparison with RoAgg (optional)
-
-[RoAgg](https://github.com/snd-sweden/roagg) (SND) lists an organisation's research outputs from DataCite
-(+ OpenAIRE, Crossref) by ROR and name variants — metadata first, organisation level. DFP-Verify reads
-the papers. `roagg_compare.py` puts the two side by side for the authors' **own** datasets only:
-
-```
-pip install roagg      # in its own environment; no dependencies
-roagg --ror https://ror.org/040wg7k59 --name-txt chalmers.txt --source datacite --source openaire --source crossref --output roagg.csv
-DV_ORG_NAME=Chalmers DV_ORG_ROR=https://ror.org/040wg7k59 python roagg_compare.py roagg.csv   # reads DV_OUT_DIR
-```
-→ `roagg_compare.csv`: each own dataset found in the papers, whether RoAgg lists it (and through what:
-publisher / creator / contributor / funder), and if not, why — read from the dataset's DataCite record
-(no organisation name or ROR in it; not a DOI; not in DataCite) or because the paper isn't the
-organisation's (no affiliated author in OpenAlex). The other way round: RoAgg datasets whose record names
-one of the papers but that the tool has no own dataset for, and why. Versions are counted once
-(`conceptDoi`, figshare `.vN`). (`--source openalex` currently needs an OpenAlex API key for paging,
-which RoAgg 2026.0.4 can't pass, so the run stops — leave it out.)
-
-### Repository reference for dataset openness (optional)
-
-`python field_norm.py` (after the pipeline) compares each own DataCite dataset with **the other
-datasets in its own repository**, in the SSIF area of the paper that cites it. One measure, with
-the pipeline's own rule on both sides: the share of datasets with **restricted access** (DataCite
-access right closed / restricted / embargoed / metadata-only); everything else counts as open, also
-when no access right is stated (recent Zenodo records, SciLifeLab). Licences are left out on purpose:
-they answer what you may do with the data, not whether it is shared or open.
-- The reference is the same repository + same SSIF area when the repository puts SSIF or OECD FOS
-  subjects on its datasets (SND, DORIS; FOS names come from Swepub's SSIF list, with the few OECD
-  wordings that differ in `FOS_NAME`) and has at least 20 datasets there; otherwise the whole
-  repository (e.g. SciLifeLab, which uses ANZSRC subjects).
-- Repositories up to 20,000 datasets are read record by record (sparse fields, 1,000 per page, so SSIF
-  codes are matched exactly); bigger ones (Zenodo) are counted with DataCite's search on FOS subjects.
-- Each dataset counts once: DOIs marked as a version of (*IsVersionOf*) or identical to
-  (*IsIdenticalTo*, figshare's `.v1` twins) another DOI are left out, as the pipeline collapses versions.
-- Accessions (ENA, PRIDE …) are not in DataCite and are not compared.
-
-Writes `output/field_norm.csv` (reference per repository × area, and per whole repository) and
-`output/field_norm_datasets.csv` (each own dataset with the reference it is compared to). The
-report shows own vs usual per SSIF area on the Overview page when the files exist.
-
-Why not all of DataCite: only a few registrants put field subjects on datasets (figshare is 44–90 %
-of five areas, the specimen registry DiSSCo 74 % of Natural sciences, at 2026-11-09), so an
-all-of-DataCite field figure mostly describes them. It is a reference for **dataset openness**, not a
-norm for the share of **papers** that share data: DataCite holds no papers that shared nothing.
-
-## Status & scope
-
-Early-stage / experimental. Tested end-to-end on a 20-paper corpus (DFP with a 31B model,
-cross-checked against Version A and a small local model).
-Limits: identifier-less data ("on request", bare repo names) can only be *categorised*, not *verified*;
-licences/access rights come from DataCite, so they're blank for data registered elsewhere (e.g.
-accessions); ORCID matching only helps where both sides recorded ORCIDs; open code is out of scope.
-Fields: a paper often has several SSIF codes (and several universities may classify it differently,
-pooled here) — how to count multi-field papers is left to the analysis. Older records may carry SSIF
-2011 codes. Paper and dataset subjects can disagree; both are shown with their source.
-The DataCite reverse lookup needs the paper's own DOI (reports without one are skipped) and only sees
-links a repository recorded in the dataset's metadata — SND and Chalmers' repository usually do,
-Zenodo/figshare deposits often don't. No link found is not evidence of no data.
-The wrapper changes no DFP code.
-
-## Credits
-
-The approach builds on ideas from open-data detection tools like **ODDPub**, with accession formats
-from the **Bioregistry** (CC0). An optional LLM layer
-(body-scan + provenance referee) was tested on a 31B model, added nothing over the deterministic core,
-and was removed. Built with **AI assistance** (Anthropic Claude) under human review.
+Builds on ideas from **ODDPub**; accession formats from the **Bioregistry** (CC0). An LLM layer (body scan +
+provenance referee) was tested on a 31B model, added nothing over the deterministic core, and was removed.
+Built with AI assistance (Anthropic Claude) under human review.
