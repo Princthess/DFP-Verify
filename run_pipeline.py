@@ -7,6 +7,7 @@ Edit the CONFIG block for your corpus. Inputs:
 Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; registry lookups cached.
 """
 import os, re, csv, glob
+from collections import Counter
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
 from patterns import GH_RX
 import detect_union, verify, fuse, classify, sections, registry_lookup, selfcheck, fields, statements
@@ -51,19 +52,48 @@ def _homepage(url):
     return not u.query and len(segs) <= 1 and not re.search(r"\d", u.path)
 
 def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
-    """Run the shared core. Paths resolve: explicit arg > env (DV_TEXT_DIR / DV_DFP_CSV /
+    """Run the whole pipeline. Paths resolve: explicit arg > env (DV_TEXT_DIR / DV_DFP_CSV /
     DV_OUT_DIR, e.g. from a .env) > the CONFIG block. So `python run_pipeline.py` works with a
-    .env or an edited CONFIG; the integrated wrapper (run_integrated.py) passes its own paths."""
+    .env or an edited CONFIG; the integrated wrapper (run_integrated.py) passes its own paths.
+    Each step below is a function further down, in the same order."""
     TEXT_DIR   = text_dir or os.environ.get("DV_TEXT_DIR") or globals()["TEXT_DIR"]
     DFP_CSV    = dfp_csv   or os.environ.get("DV_DFP_CSV") or globals()["DFP_CSV"]
     OUT_DIR    = out_dir   or os.environ.get("DV_OUT_DIR") or globals()["OUT_DIR"]
     CACHE      = cache     if cache is not None else globals()["CACHE"]
-    # LLM source grouped by paper; paper_doi for author lookup; paper_meta carries DFP's
-    # paper-level fields (incl. das_found) so the DFP-superset can emit a 1:1 placeholder
-    # row for every paper DFP saw, even one where nothing was found.
+    # optional steps (in .env): DV_FIELDS=off skips the research-field lookup (Swepub / OpenAlex)
+    use_fields = os.environ.get("DV_FIELDS", "on").strip().lower() not in ("off", "no", "0", "false")
+
+    dfp_by, paper_doi, paper_meta = read_llm_output(DFP_CSV)
+    per_paper, all_cands, papers = find_candidates(TEXT_DIR, dfp_by, paper_meta)
+    print("STAGE 2 verify:")
+    verify.verify_candidates(all_cands, cache_path=CACHE)   # mutates candidate dicts in place
+    orcids = add_registry_links(per_paper, all_cands, paper_doi, paper_meta, papers)
+    fc = fields.FieldCache(os.path.join(HERE, ".field_cache.json"))
+    if use_fields:
+        add_fields(per_paper, paper_meta, fc)
+    else:
+        print("STAGE 2d field: skipped (DV_FIELDS=off)")
+    print_statement_counts(per_paper, paper_meta)
+    print("STAGE classify:")
+    n = label_datasets(per_paper, papers, orcids)
+    counts = tidy_statuses(per_paper)
+    print_label_counts(n, counts)
+    if use_fields:
+        name_dataset_subjects(per_paper, fc)
+    fc.save()
+    write_results(per_paper, paper_meta, TEXT_DIR, DFP_CSV, OUT_DIR)
+
+
+HERE = os.path.dirname(__file__)
+
+
+# --------------------------------------------------------------------- step 1: the LLM's output
+def read_llm_output(dfp_csv):
+    """DFP's rows grouped by paper; the paper DOI DFP gave; and DFP's paper-level fields (incl. das_found)
+    so merged_output.csv can have a placeholder row for every paper DFP saw, even one with nothing found."""
     dfp_by, paper_doi, paper_meta = {}, {}, {}
-    if DFP_CSV and os.path.exists(DFP_CSV):
-        for r in csv.DictReader(open(DFP_CSV, encoding="utf-8-sig", newline="")):
+    if dfp_csv and os.path.exists(dfp_csv):
+        for r in csv.DictReader(open(dfp_csv, encoding="utf-8-sig", newline="")):
             # The new (LiteLLM) DFP renamed columns: pdf->file, ocr_pages->ocr_page_count, +vlm.
             # Normalise so BOTH the old and new DFP CSVs feed the rest of the pipeline unchanged.
             r.setdefault("file", r.get("pdf") or r.get("source_json") or "")
@@ -76,40 +106,49 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
             if p not in paper_meta:
                 paper_meta[p] = {k: (r.get(k) or "") for k in
                                  ("file", "paper_doi", "das_found", "ocr_page_count")}
-    # DAS signal comes from DFP's source_section + a DAS-heading locator (sections.py) -- no R, no ODDPub.
+    return dfp_by, paper_doi, paper_meta
 
-    # STAGE 1: detect-union per paper (carries each detector's own/reused + open attrs)
-    per_paper, all_cands, header, heads, texts = {}, [], {}, {}, {}
-    for txt in glob.glob(os.path.join(TEXT_DIR, "*.txt")):
+
+# --------------------------------------------------------------------- step 2: candidates in the text
+def read_statements(text, dfp_rows, pmeta):
+    """What the paper says about its data, by pattern search, next to the LLM's view of the same thing."""
+    pmeta["no_data_signal"]    = statements.signal(statements.statement(text))    # "no new data were generated"
+    pmeta["on_request_signal"] = statements.signal(statements.on_request(text))   # "available on request"
+    pmeta["supplement_signal"] = statements.signal(statements.supplement(text))   # "data are in the supplement"
+    # reuse of other people's data: pattern search, next to the LLM's own judgement (DFP rows it says
+    # the authors did not create, software left out). A signal only -- the verdict counts verified reuse.
+    pmeta["reuse_signal"] = statements.signal(statements.reuse(text))
+    pmeta["reuse_llm"] = "; ".join(dict.fromkeys(
+        (r.get("name") or r.get("identifier") or "").strip() for r in dfp_rows
+        if str(r.get("created_by_authors", "")).strip().lower() == "false"
+        and str(r.get("is_code", "")).strip().lower() != "true"))
+    # does the paper have a data-availability statement? pattern search (heading as written) next to
+    # the LLM's own das_found, compared like the dataset searches
+    pmeta["das_pattern"] = statements.das_heading(text)
+    pmeta["das_llm"] = {"true": "yes", "false": "no"}.get(str(pmeta.get("das_found", "")).strip().lower(), "")
+    # the LLM's view of the same thing: DFP rows it marked as supplementary material
+    pmeta["supplement_llm"] = "; ".join(dict.fromkeys(
+        (r.get("name") or r.get("identifier") or "").strip() for r in dfp_rows
+        if str(r.get("is_supplementary", "")).strip().lower() == "true"))
+
+
+def find_candidates(text_dir, dfp_by, paper_meta):
+    """Every dataset id the LLM or the pattern search finds in each paper, with where in the paper it sits
+    (data availability statement / body / supplement / references). Returns the candidates per paper, all
+    of them in one list, and per paper the text pieces later steps need (first page, flattened text)."""
+    per_paper, all_cands, papers = {}, [], {}
+    for txt in glob.glob(os.path.join(text_dir, "*.txt")):
         p = stem(txt)
         text = open(txt, encoding="utf-8", errors="ignore").read()
-        header[p] = text[:2500]                       # first-page author block (for own/reused)
-        heads[p]  = detect_union.normalize_text(text[:6000])   # first page(s), for the paper-DOI check
-        pmeta = paper_meta.setdefault(p, {})
-        pmeta["no_data_signal"]    = statements.signal(statements.statement(text))    # "no new data were generated"
-        pmeta["on_request_signal"] = statements.signal(statements.on_request(text))   # "available on request"
-        pmeta["supplement_signal"] = statements.signal(statements.supplement(text))   # "data are in the supplement"
-        # reuse of other people's data: pattern search, next to the LLM's own judgement (DFP rows it says
-        # the authors did not create, software left out). A signal only -- the verdict counts verified reuse.
-        pmeta["reuse_signal"] = statements.signal(statements.reuse(text))
-        pmeta["reuse_llm"] = "; ".join(dict.fromkeys(
-            (r.get("name") or r.get("identifier") or "").strip() for r in dfp_by.get(p, [])
-            if str(r.get("created_by_authors", "")).strip().lower() == "false"
-            and str(r.get("is_code", "")).strip().lower() != "true"))
-        # does the paper have a data-availability statement? pattern search (heading as written) next to
-        # the LLM's own das_found, compared like the dataset searches
-        pmeta["das_pattern"] = statements.das_heading(text)
-        pmeta["das_llm"] = {"true": "yes", "false": "no"}.get(str(pmeta.get("das_found", "")).strip().lower(), "")
-        # the LLM's view of the same thing: DFP rows it marked as supplementary material
-        pmeta["supplement_llm"] = "; ".join(dict.fromkeys(
-            (r.get("name") or r.get("identifier") or "").strip() for r in dfp_by.get(p, [])
-            if str(r.get("is_supplementary", "")).strip().lower() == "true"))
+        read_statements(text, dfp_by.get(p, []), paper_meta.setdefault(p, {}))
         cands = detect_union.union_detect(text=text, dfp_rows=dfp_by.get(p, []))
         # in-text provenance: locate each id against the DAS / reference / supplement landmarks.
         # DAS region is found by the heading locator; DFP's own source_section also counts.
         ntext = detect_union.normalize_text(text); ntext_lc = ntext.lower()
         bounds = sections.segment(ntext, with_das=True)
-        texts[p] = (ntext_lc, bounds)                 # kept for stage 2c (landing-page matches)
+        papers[p] = {"header": text[:2500],                                 # first-page author block (own/reused)
+                     "head": detect_union.normalize_text(text[:6000]),     # first page(s), for the paper-DOI check
+                     "text_lc": ntext_lc, "bounds": bounds}                 # for landing-page matches
         for c in cands:
             pos = sections.find_positions(ntext_lc, c["identifier"], c.get("kind", ""))
             primary, alllab = sections.locate(pos, bounds, dfp_section=c.get("location", ""))
@@ -121,24 +160,25 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
             c["in_das"] = ("das" in alllab) or dfp_das
         per_paper[p] = cands; all_cands.extend(cands)
     n_das = sum(1 for c in all_cands if c.get("in_das"))
-    from collections import Counter
     loc = Counter(c.get("found_in", "") for c in all_cands)
     print(f"STAGE 1 detect-union: {len(per_paper)} papers, {len(all_cands)} candidates ({n_das} in DAS)")
     print(f"  in-text location: " + " | ".join(f"{k}:{v}" for k, v in loc.most_common()))
+    return per_paper, all_cands, papers
 
-    # STAGE 2: verify (cached)
-    print("STAGE 2 verify:")
-    verify.verify_candidates(all_cands, cache_path=CACHE)   # mutates candidate dicts in place
 
-    # STAGE 2c: registry links -- datasets DataCite ties to the paper (reverse lookup, cached).
-    # Corroborates ids found in the text, repairs near-miss ids, and adds datasets not in the text.
+# --------------------------------------------------------------------- step 3: registry links
+def add_registry_links(per_paper, all_cands, paper_doi, paper_meta, papers):
+    """Check each paper's DOI against its first page, read year / journal / publisher / author ORCIDs, and ask
+    DataCite which datasets point at the paper: corroborates ids found in the text, repairs near-miss ids,
+    and adds datasets not in the text. Returns the paper authors' ORCIDs per paper."""
     print("STAGE 2c registry links (DataCite, reverse lookup):")
-    reg = registry_lookup.RegistryCache(os.path.join(os.path.dirname(__file__), ".registry_cache.json"))
+    reg = registry_lookup.RegistryCache(os.path.join(HERE, ".registry_cache.json"))
     doi_stat, reg_stat, orcids = Counter(), Counter(), {}
     pdfs = selfcheck.pdf_index(os.environ.get("DV_PDF_DIR"))   # optional: only to explain broken ids
     for p, cands in per_paper.items():
         pm = paper_meta.setdefault(p, {})
-        doi, st = registry_lookup.check_paper_doi(paper_doi.get(p, ""), heads.get(p, ""), reg)
+        pp = papers.get(p, {})
+        doi, st = registry_lookup.check_paper_doi(paper_doi.get(p, ""), pp.get("head", ""), reg)
         pm["dv_paper_doi"], pm["doi_status"] = doi, st
         doi_stat[st] += 1
         if st == "unconfirmed" or not doi:
@@ -147,7 +187,7 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         pm["journal"] = reg.journal(doi)               # journal name
         pm["publisher"] = reg.publisher(doi)           # publisher (policies and DAS templates are per publisher)
         orcids[p] = reg.paper_orcids(doi)              # paper authors' ORCIDs (own/reused, step 1a)
-        ntext_lc, bounds = texts.get(p, ("", {}))
+        ntext_lc, bounds = pp.get("text_lc", ""), pp.get("bounds", {})
         added = registry_lookup.attach(cands, registry_lookup.reverse_links(doi, reg), text_lc=ntext_lc)
         for c in added:                                # landing-page citations: locate them like any id
             if c.get("_probe"):
@@ -165,11 +205,14 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
     reg.save()
     print(f"  paper DOI: " + " | ".join(f"{k}:{v}" for k, v in doi_stat.most_common()))
     print(f"  DataCite links: " + " | ".join(f"{k}:{v}" for k, v in reg_stat.most_common()))
+    return orcids
 
-    # STAGE 2d: field anchor per paper (Swepub SSIF, else Swepub's automatic SSIF classifier on the
-    # abstract, else OpenAlex) -- from the checked paper DOI only
+
+# --------------------------------------------------------------------- step 4: research field (optional)
+def add_fields(per_paper, paper_meta, fc):
+    """Field per paper: Swepub SSIF, else Swepub's automatic SSIF classifier on the abstract, else OpenAlex
+    -- from the checked paper DOI only. Skipped with DV_FIELDS=off (field and work_type stay empty)."""
     print("STAGE 2d field (Swepub SSIF, else automatic SSIF, else OpenAlex):")
-    fc = fields.FieldCache(os.path.join(os.path.dirname(__file__), ".field_cache.json"))
     fstat = Counter()
     for p in per_paper:
         pm = paper_meta.setdefault(p, {})
@@ -178,18 +221,25 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         fstat[pm.get("field_source") or "none"] += 1
         pm["work_type"] = fc.work_type(pm["dv_paper_doi"]) if ok else ""   # OpenAlex: article, review ...
     print("  " + " | ".join(f"{k}:{v}" for k, v in fstat.most_common()))
+
+
+def print_statement_counts(per_paper, paper_meta):
     n_nd = sum(1 for p in per_paper if paper_meta.get(p, {}).get("no_data_signal"))
     n_or = sum(1 for p in per_paper if paper_meta.get(p, {}).get("on_request_signal"))
     n_su = sum(1 for p in per_paper if paper_meta.get(p, {}).get("supplement_signal"))
     print(f"  data statements: {n_nd} say no data were generated, {n_or} say data are available on request, "
           f"{n_su} say data are in the article / supplement")
 
-    # STAGE 2b/3a: classify each VERIFIED dataset -> provenance + openness
-    print("STAGE classify:")
-    meta = classify.MetaCache(os.path.join(os.path.dirname(__file__), ".meta_cache.json"))
+
+# --------------------------------------------------------------------- step 5: own / reused, open / restricted
+def label_datasets(per_paper, papers, orcids):
+    """For each verified dataset: status, own or reused, open or restricted, repository, licence, from its
+    registry record. Also Zenodo communities, and a sequencing run's own/reused from its study.
+    Returns (datasets labelled, runs given their study's own/reused)."""
+    meta = classify.MetaCache(os.path.join(HERE, ".meta_cache.json"))
     n = 0
     for p, cands in per_paper.items():
-        hdr = header.get(p, "")
+        hdr = papers.get(p, {}).get("header", "")
         for c in cands:
             c["status"] = classify.status(c)
             if c["status"] == "confirmed" or c["status"].startswith("likely"):
@@ -235,6 +285,14 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
                     c["provenance"], c["provenance_by"] = hit["provenance"], f"study ({hit['identifier']})"
                     n_run += 1
     meta.save()
+    return n, n_run
+
+
+# --------------------------------------------------------------------- step 6: tidy statuses
+def tidy_statuses(per_paper):
+    """Rows that are not a separate dataset of the paper get their own status, so they are not counted:
+    DataCite-only links, the same dataset written twice, code links, repository front pages.
+    Returns how many of each."""
     # Datasets DataCite ties to the paper that the paper itself doesn't cite are reported, but NOT
     # counted as the paper sharing data: sharing = the paper tells the reader where its data is.
     n_reg = 0
@@ -289,20 +347,32 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
         for c in cands:
             if c.get("kind") == "url" and c.get("status", "").startswith("likely") and _homepage(c["identifier"]):
                 c["status"] = "homepage"; n_home += 1
-    print(f"  labelled {n} datasets (confirmed + likely), {n_reg} of them DataCite-only (not counted)"
-          + (f", {n_dup} link(s) merged into a confirmed DOI" if n_dup else "")
-          + (f", {n_home} repository front-page link(s) next to an own record" if n_home else "")
-          + (f", {n_code} code link(s) (GitHub etc.) not counted as data" if n_code else "")
+    return {"reg": n_reg, "dup": n_dup, "code": n_code, "home": n_home}
+
+
+def print_label_counts(labelled, counts):
+    n, n_run = labelled
+    print(f"  labelled {n} datasets (confirmed + likely), {counts['reg']} of them DataCite-only (not counted)"
+          + (f", {counts['dup']} link(s) merged into a confirmed DOI" if counts["dup"] else "")
+          + (f", {counts['home']} repository front-page link(s) next to an own record" if counts["home"] else "")
+          + (f", {counts['code']} code link(s) (GitHub etc.) not counted as data" if counts["code"] else "")
           + (f", {n_run} run(s) given their study's own/reused" if n_run else ""))
-    for cands in per_paper.values():                  # each dataset's own subjects -- cross-check only
+
+
+def name_dataset_subjects(per_paper, fc):
+    """Each dataset's own subjects, with SSIF code names from Swepub -- a cross-check, never the anchor."""
+    for cands in per_paper.values():
         for c in cands:
             if c.get("subjects"): c["subject"] = fields.format_subjects(c["subjects"], fc)
-    fc.save()
 
-    # STAGE 3: fuse -> buckets (summary.csv headline + per_dataset + DFP-superset merged_output.csv)
+
+# --------------------------------------------------------------------- step 7: write results
+def write_results(per_paper, paper_meta, text_dir, dfp_csv, out_dir):
+    """Per-paper verdicts and the output files (summary.csv, per_dataset.csv, merged_output.csv,
+    selfcheck.csv, run_info.json), then a short summary on screen."""
     summary_rows, paper_rows, dataset_rows, merged_rows = fuse.fuse(per_paper, paper_meta=paper_meta)
-    fuse.write_outputs(summary_rows, dataset_rows, merged_rows, OUT_DIR)
-    _write_run_info(OUT_DIR, TEXT_DIR, DFP_CSV, len(per_paper))
+    fuse.write_outputs(summary_rows, dataset_rows, merged_rows, out_dir)
+    _write_run_info(out_dir, text_dir, dfp_csv, len(per_paper))
 
     own_open_papers = [r for r in paper_rows if r["has_own_open"]]
     print(f"\nRESULT ({len(per_paper)} papers):")
@@ -317,12 +387,13 @@ def main(text_dir=None, dfp_csv=None, out_dir=None, cache=None):
           f"{sum(r['datacite_only'] for r in paper_rows)} datasets in "
           f"{sum(1 for r in paper_rows if r['datacite_only'])} papers")
     print()
-    for line in selfcheck.run(per_paper, paper_meta, OUT_DIR): print(line)
+    for line in selfcheck.run(per_paper, paper_meta, out_dir): print(line)
     print()
     n_disagree = sum(1 for r in merged_rows if r["dv_disagreement"])
     print(f"  merged_output.csv: {len(merged_rows)} rows (DFP cols + dv_), "
           f"{n_disagree} with a tool disagreement")
-    print(f"  wrote {OUT_DIR}\\summary.csv (headline), per_dataset.csv, merged_output.csv")
+    print(f"  wrote {out_dir}\\summary.csv (headline), per_dataset.csv, merged_output.csv")
+
 
 if __name__ == "__main__":
     main()
