@@ -22,8 +22,8 @@ Public API:
 """
 import json, os, re, time
 from net import S                # shared HTTP session (User-Agent with contact address)
-XSEARCH  = "http://libris.kb.se/xsearch"
-OAIPMH   = "http://api.libris.kb.se/swepub/oaipmh/"
+XSEARCH  = "https://libris.kb.se/xsearch"
+OAIPMH   = "https://api.libris.kb.se/swepub/oaipmh/"
 SUBJECTS = "https://bibliometri.swepub.kb.se/api/v1/info/research-subjects"
 CLASSIFY = "https://bibliometri.swepub.kb.se/api/v1/classify"
 
