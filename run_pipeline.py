@@ -120,16 +120,17 @@ def read_statements(text, dfp_rows, pmeta):
     pmeta["reuse_signal"] = statements.signal(statements.reuse(text))
     pmeta["reuse_llm"] = "; ".join(dict.fromkeys(
         (r.get("name") or r.get("identifier") or "").strip() for r in dfp_rows
-        if str(r.get("created_by_authors", "")).strip().lower() == "false"
-        and str(r.get("is_code", "")).strip().lower() != "true"))
+        if detect_union._tri(r.get("created_by_authors")) is False
+        and detect_union._tri(r.get("is_code")) is not True))
     # does the paper have a data-availability statement? pattern search (heading as written) next to
     # the LLM's own das_found, compared like the dataset searches
     pmeta["das_pattern"] = statements.das_heading(text)
-    pmeta["das_llm"] = {"true": "yes", "false": "no"}.get(str(pmeta.get("das_found", "")).strip().lower(), "")
+    # (older DFP versions write True/False, newer ones 1/0; _tri reads both)
+    pmeta["das_llm"] = {True: "yes", False: "no"}.get(detect_union._tri(pmeta.get("das_found")), "")
     # the LLM's view of the same thing: DFP rows it marked as supplementary material
     pmeta["supplement_llm"] = "; ".join(dict.fromkeys(
         (r.get("name") or r.get("identifier") or "").strip() for r in dfp_rows
-        if str(r.get("is_supplementary", "")).strip().lower() == "true"))
+        if detect_union._tri(r.get("is_supplementary")) is True))
 
 
 def find_candidates(text_dir, dfp_by, paper_meta):

@@ -32,8 +32,8 @@ import dfp_live, run_pipeline
 # --- configure (env var > CLI arg > default); edit the defaults or just set the env vars --------
 PDF_DIR    = (sys.argv[1] if len(sys.argv) > 1 else
               os.environ.get("DV_PDF_DIR", r"path/to/pdfs"))
-MODEL      = os.environ.get("DV_MODEL", "")             # empty -> DFP uses VLM_MODEL from its .env (litellm)
-BACKEND    = os.environ.get("DV_BACKEND", "litellm")    # 'litellm' (HPC proxy) or 'ollama' (local)
+MODEL      = os.environ.get("DV_MODEL", "")             # empty -> DFP's own default model
+BACKEND    = os.environ.get("DV_BACKEND", "vllm")       # 'vllm' (HPC proxy) or 'ollama' (local)
 OUT_DIR    = os.environ.get("DV_OUT_DIR",
                             os.path.join(os.path.dirname(__file__), "output_integrated"))
 TEXT_DIR   = os.path.join(OUT_DIR, "_text")              # .txt auto-extracted from the PDFs

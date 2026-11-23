@@ -7,7 +7,7 @@ the consumer version (run_pipeline.py); the two pipelines differ only in where t
 comes from -- you ran it by hand (consumer) vs. this runs it for you (integrated).
 
 It shells out to DFP's own CLI and modifies NO DFP code. One step:
-    python -m main --batch-dir <pdfs> --csv <out.csv> --backend {litellm|ollama}
+    python -m main --batch-dir <pdfs> --csv-output <out.csv> --backend {vllm|ollama}
 
 It can also extract plain .txt per PDF (via DFP's OWN extractor) for the regex detector, so a
 fresh machine needs only the PDFs -- no separate .txt corpus.
@@ -23,13 +23,16 @@ PYTHON  = sys.executable          # the interpreter running this (DFP must be im
 MODEL   = os.environ.get("DV_MODEL", "qwen3.5")   # DFP's default local Ollama model; change to your tag
 # ------------------------------------------------------------------------------------------------
 
-def run_dfp(pdf_dir, out_csv, model=None, dfp_dir=None, backend="litellm",
+def run_dfp(pdf_dir, out_csv, model=None, dfp_dir=None, backend="vllm",
             enrich_urls=False, no_ocr=False, no_references=False, extra=None):
     """Run DFP over `pdf_dir` -> `out_csv` using DFP's ONE-STEP CSV output
-    (`python -m main --batch-dir ... --csv ... --backend ...`). Returns out_csv on success.
-    backend 'litellm' hits the HPC LiteLLM proxy (base URL/key from DFP's own .env);
-    'ollama' uses a local model. Reuses an existing CSV if it is newer than every PDF (the LLM step is slow)."""
+    (`python -m main --batch-dir ... --csv-output ... --backend ...`). Returns out_csv on success.
+    backend 'vllm' hits an OpenAI-compatible server such as the HPC LiteLLM proxy (base URL/key
+    from DFP's own .env); 'ollama' uses a local model. 'litellm' (DFP's earlier name) means 'vllm'.
+    Reuses an existing CSV if it is newer than every PDF (the LLM step is slow)."""
     dfp_dir = dfp_dir or DFP_DIR
+    if backend == "litellm":
+        backend = "vllm"
     if _fresh(out_csv, pdf_dir):
         print(f"  DFP: reusing {out_csv} (newer than the PDFs)")
         return out_csv
@@ -37,11 +40,11 @@ def run_dfp(pdf_dir, out_csv, model=None, dfp_dir=None, backend="litellm",
         raise FileNotFoundError(f"DFP not found at {dfp_dir}. Set DFP_DIR / env DV_DFP_DIR.")
     os.makedirs(os.path.dirname(os.path.abspath(out_csv)), exist_ok=True)
     if os.path.exists(out_csv):
-        os.remove(out_csv)          # DFP's --csv APPENDS; start clean so rows aren't duplicated
+        os.remove(out_csv)          # DFP's --csv-output APPENDS; start clean so rows aren't duplicated
 
-    # one step now: PDFs -> one CSV (the slow, LLM step). --model omitted for litellm so DFP
-    # uses VLM_MODEL from its .env; pass it only to override.
-    cmd = [PYTHON, "-m", "main", "--batch-dir", pdf_dir, "--csv", os.path.abspath(out_csv),
+    # one step now: PDFs -> one CSV (the slow, LLM step). --model omitted by default so DFP
+    # uses its own default model (from its .env for vllm); pass it only to override.
+    cmd = [PYTHON, "-m", "main", "--batch-dir", pdf_dir, "--csv-output", os.path.abspath(out_csv),
            "--backend", backend]
     if model:         cmd += ["--model", model]
     if enrich_urls:   cmd.append("--enrich-urls")
