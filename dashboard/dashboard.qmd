@@ -551,7 +551,7 @@ how("Does the paper have a data availability statement (found by pattern search 
 ```{python}
 #| title: "Data"
 data_tab(S[["paper", "journal", "has_das", "das_pattern", "das_llm", "data_verdict"]]
-           .rename(columns={"das_pattern": "heading found (pattern search)", "das_llm": "LLM says statement"})
+           .rename(columns={"das_pattern": "found by pattern search (heading or sentence)", "das_llm": "LLM says statement"})
            .sort_values(["has_das", "paper"]), "das",
          counts=dv.loc[:, dv.sum() > 0].rename(columns=LABEL).rename(index=DASL).rename_axis("statement").reset_index())
 ```
@@ -946,11 +946,11 @@ for _, r in S[(S.no_data_signal != "") & (S.data_verdict.str.startswith("shared 
     add(C_UNCLEAR, "Paper says it has no data, yet cites own data", r.paper, r.no_data_signal[:90],
         "Could be the wording or the tool. Read the data statement: is the cited dataset the authors' own?")
 
-# data availability statement: the LLM and the pattern search (heading) disagree
+# data availability statement: the LLM and the pattern search (heading or template sentence) disagree
 for _, r in S[(S.das_llm != "") & ((S.das_pattern != "") != (S.das_llm == "yes"))].iterrows():
     if r.das_pattern:
         add(C_TOOL, "Data availability statement: found by pattern search, not by the LLM", r.paper,
-            r.das_pattern, "Check the heading in the paper: is it a data availability statement?")
+            r.das_pattern[:90], "Check the paper: is this heading or sentence a data availability statement?")
     else:
         add(C_TOOL, "Data availability statement: found by the LLM, not by pattern search", r.paper, "",
             "Check the paper: which heading does it use? (A new wording could be added to the search.)")

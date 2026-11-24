@@ -7,7 +7,8 @@ paper's own sentence (summary.csv `*_signal` columns), next to the LLM's view wh
   supplement(text) -- "all data are included in this article and its supplementary information"
                                                                                        -> supplement_signal
   reuse(text)      -- "we use data from two studies", "publicly available dataset"     -> reuse_signal
-  das_heading(text)-- the data-availability statement's heading as written            -> das_pattern
+  das_statement(text) -- the data-availability statement's heading as written, or a
+                         template sentence that is one ("The data that support ...")   -> das_pattern
 
 Generic phrasings from publisher data-availability templates and ordinary scientific prose, never
 per-journal or per-database lists. The patterns live here, next to the code that cuts out the sentence,
@@ -211,10 +212,13 @@ DAS_ANYWHERE = re.compile(
     # materials availability"
     r"Data(?:,?\s+(?:and\s+)?(?:[Cc]ode|[Mm]odels?|[Ss]oftware|[Mm]aterials?))*\s+"
     r"(?:[Aa]vailability|[Aa]ccessibility|[Aa]ccess)(?:\s+[Ss]tatements?)?"
-    r"|DATA\s+(?:AVAILABILITY|ACCESSIBILITY)(?:\s+STATEMENTS?)?"
+    r"|DATA(?:,?\s+(?:AND\s+)?(?:CODE|MODELS?|SOFTWARE|MATERIALS?))*\s+(?:AVAILABILITY|ACCESSIBILITY)(?:\s+STATEMENTS?)?"
     r"|Availability\s+of\s+(?:[Dd]ata|[Dd]ata\s+and\s+[Mm]aterials?|[Ss]upporting\s+[Dd]ata)"
     r"|(?:Data|Code)\s+and\s+(?:[Cc]ode|[Dd]ata)\s+[Aa]vailability(?:\s+[Ss]tatements?)?"
     r"|Open\s+[Rr]esearch(?:\s+[Ss]ection)?"                 # AGU: "Open Research" section
+    # "Statement of data availability", "Statements of data and code availability", "Data statement"
+    r"|Statements?\s+of\s+[Dd]ata(?:\s+and\s+[Cc]ode)?(?:\s+[Aa]vailability)?"
+    r"|Data\s+[Ss]tatements?"
     # ...then a colon / full stop, a new sentence (also glued on by PDF columns: "availabilityDownloaded"),
     # or the end of the line (a heading in one column, the other column's text after it)
     r")(?=\s*[:.]|\s*[A-Z\d]|[ \t]*\r?\n)")
@@ -223,3 +227,28 @@ def das_heading(text):
     """The heading of the paper's data-availability statement as written, or ''."""
     m = DAS_ANYWHERE.search(text or "")
     return re.sub(r"\s+", " ", m.group(0)) if m else ""
+
+
+# Nature's "Online content" box: "... and statements of data and code availability are available at
+# https://doi.org/..." -- the paper says where its data statement is. Counts as having one; the link is
+# the paper's own DOI, so it is not a DAS region for dataset ids.
+DAS_POINTER = re.compile(r"(?i)\bstatements?\s+of\s+data(?:\s+and\s+code)?\s+availability\b")
+
+def das_statement(text):
+    """Does the paper have a data-availability statement, by pattern search? The heading as written, else
+    the template sentence that is one (sections.DAS_SENTENCE or the "Online content" pointer), else ''.
+    Fixed template wordings only."""
+    h = das_heading(text)
+    if h:
+        return h
+    import sections
+    flat = re.sub(r"(\w)-[ \t]*\n\s*(?=[a-z])", r"\1", _without_refs(text))
+    flat = re.sub(r"\s+", " ", flat)
+    for rx in (sections.DAS_SENTENCE, DAS_POINTER):
+        m = rx.search(flat)
+        if m:
+            e = flat.find(". ", m.end())
+            return 'sentence: "' + flat[m.start(): e + 1 if 0 <= e < m.end() + 200 else m.end() + 80].strip() + '"'
+    # not the on-request / in-the-supplement / no-data sentences: they also turn up in ordinary prose
+    # ("before, sharing data was limited to sending it on request"), so they stay signals only
+    return ""

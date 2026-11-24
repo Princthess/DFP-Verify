@@ -122,9 +122,9 @@ def read_statements(text, dfp_rows, pmeta):
         (r.get("name") or r.get("identifier") or "").strip() for r in dfp_rows
         if detect_union._tri(r.get("created_by_authors")) is False
         and detect_union._tri(r.get("is_code")) is not True))
-    # does the paper have a data-availability statement? pattern search (heading as written) next to
-    # the LLM's own das_found, compared like the dataset searches
-    pmeta["das_pattern"] = statements.das_heading(text)
+    # does the paper have a data-availability statement? pattern search (heading as written, or a
+    # template sentence) next to the LLM's own das_found, compared like the dataset searches
+    pmeta["das_pattern"] = statements.das_statement(text)
     # (older DFP versions write True/False, newer ones 1/0; _tri reads both)
     pmeta["das_llm"] = {True: "yes", False: "no"}.get(detect_union._tri(pmeta.get("das_found")), "")
     # the LLM's view of the same thing: DFP rows it marked as supplementary material

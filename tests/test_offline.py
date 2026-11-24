@@ -78,6 +78,21 @@ class ReadingStatements(unittest.TestCase):
     def test_data_availability_in_prose_is_not_a_heading(self):
         self.assertFalse(statements.das_heading("Open science improves data availability for everyone."))
 
+    def test_statement_of_data_heading(self):
+        self.assertTrue(statements.das_heading("Online content\nStatements of data and code availability\nData are at Zenodo."))
+        self.assertTrue(statements.das_heading("Results were robust.\n\nData statement: the data are at SND."))
+        self.assertTrue(statements.das_heading("Results were robust. ■DATA AND SOFTWARE AVAILABILITY The data are in Zenodo."))
+
+    def test_on_request_in_prose_is_not_a_statement(self):
+        self.assertFalse(statements.das_statement("Before, sharing data was generally limited to sending it on request, but now data can be shared instantly."))
+
+    def test_template_sentence_without_heading(self):
+        self.assertTrue(statements.das_statement("We thank the farmers. The data that support the findings of this study are openly available in Zenodo at https://doi.org/10.5281/zenodo.1."))
+        self.assertTrue(statements.das_statement("Online content Any methods and statements of data and code availability are available at https://doi.org/10.1038/x."))
+
+    def test_ordinary_text_is_not_a_statement(self):
+        self.assertFalse(statements.das_statement("Data are available for 40 countries. The data support our hypothesis."))
+
 
 class DecidingOpenness(unittest.TestCase):
     def test_open_access_right(self):
@@ -122,6 +137,17 @@ class FindingSections(unittest.TestCase):
         self.assertEqual(primary, "das")
         primary, _ = sections.locate(sections.find_positions(ntext.lower(), "10.1000/xyz123", "doi"), bounds)
         self.assertEqual(primary, "references")
+
+    def test_id_in_template_sentence_without_heading(self):
+        text = ("Introduction\nWe studied cows on three farms.\n\nWe thank the farmers. The data that support the "
+                "findings of this study are openly available at https://doi.org/10.5878/z57e-3j96. Funding was from X.\n\n"
+                "Results\nSee 10.5281/zenodo.42 for the code.")
+        ntext = detect_union.normalize_text(text)
+        bounds = sections.segment(ntext, with_das=True)
+        primary, _ = sections.locate(sections.find_positions(ntext.lower(), "10.5878/z57e-3j96", "doi"), bounds)
+        self.assertEqual(primary, "das")
+        primary, _ = sections.locate(sections.find_positions(ntext.lower(), "10.5281/zenodo.42", "doi"), bounds)
+        self.assertEqual(primary, "body")
 
 
 class VerdictRules(unittest.TestCase):

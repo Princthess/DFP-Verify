@@ -31,7 +31,19 @@ SUPP_HEAD = re.compile(
 DAS_HEAD = re.compile(
     r"(?im)^[\s\d.]*(data\s+availability(\s+statement)?|availability\s+of\s+data(\s+and\s+materials?)?|"
     r"data\s+and\s+code\s+availability|code\s+and\s+data\s+availability|"
-    r"data\s+access(ibility)?(\s+statement)?)\b[:.\s]*$")
+    r"data\s+access(ibility)?(\s+statement)?|"
+    r"statements?\s+of\s+data(\s+and\s+code)?(\s+availability)?|data\s+statements?)\b[:.\s]*$")
+# data-availability statements without a heading the locators know: only the fixed wordings of publisher
+# templates, which are not ordinary prose. Used when no heading is found: the sentence is the DAS region.
+#   "The data that support the findings of this study are available ..."   (Wiley, T&F, Springer, Elsevier)
+#   "Source data are provided with this paper"                             (Nature)
+#   "All data needed to evaluate the conclusions in the paper are present ..."  (Science)
+DAS_SENTENCE = re.compile(
+    r"(?i)\b(?:the\s+)?(?:data(?:\s*sets?)?|datasets?)(?:\s+and\s+(?:code|materials?|software))?\s+that\s+"
+    r"supports?\s+the\s+(?:findings|results|conclusions)\s+of\s+this\s+"
+    r"(?:study|article|paper|work|research|manuscript)\b"
+    r"|\bsource\s+data\s+(?:are|is)\s+provided\s+with\s+this\s+(?:paper|article)\b"
+    r"|\ball\s+data\s+needed\s+to\s+evaluate\s+the\s+conclusions\s+in\s+the\s+paper\b")
 # headings that end the DAS region
 DAS_END = re.compile(
     r"(?im)^[\s\d.]*(acknowledg(e)?ments?|author\s+contributions?|funding|"
@@ -60,10 +72,16 @@ def _supp_start(text):
 
 
 def _das_region(text):
-    """(start, end) of the Data Availability section via its heading (on its own line), or None."""
+    """(start, end) of the Data Availability section via its heading (on its own line), or None.
+    Without a heading, a template data-availability sentence (DAS_SENTENCE) is the region: from its start
+    to the end of the sentence (a full stop followed by a space, so DOIs and links stay inside)."""
     m = DAS_HEAD.search(text)
     if not m:
-        return None
+        s = DAS_SENTENCE.search(text)
+        if not s:
+            return None
+        e = re.compile(r"\.\s").search(text, s.end())
+        return (s.start(), min(e.end() if e else len(text), s.end() + 600))
     start = m.end()
     e = DAS_END.search(text, pos=start)
     end = e.start() if e else min(start + 1500, len(text))
