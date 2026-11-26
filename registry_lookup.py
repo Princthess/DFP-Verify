@@ -29,7 +29,7 @@ Public API:
 import json, os, re, time
 from urllib.parse import urlparse
 from patterns import DOI_RX, clean_doi
-from net import S                # shared HTTP session (User-Agent with contact address)
+from net import S, transient, failed   # shared HTTP session; "no answer" bookkeeping
 DATA_TYPES   = {"dataset", "software", "collection"}            # same set as verify.py
 VERSION_RELS = {"hasversion", "isversionof", "isnewversionof", "ispreviousversionof"}
 VERDICT      = "data-verified (DataCite link)"
@@ -171,10 +171,17 @@ class RegistryCache:
                 if r.status_code == 200:
                     ids = [a.get("ORCID") for a in r.json()["message"].get("author", [])]
                 else:
+                    # Crossref busy is not "not a Crossref DOI": an empty list cached here would weaken the
+                    # own/reused judgement for good
+                    if transient(r.status_code):
+                        failed(f"Crossref ORCIDs {doi}: HTTP {r.status_code}"); return []
                     r = S.get(f"https://api.datacite.org/dois/{doi}", timeout=30)
+                    if transient(r.status_code):
+                        failed(f"DataCite ORCIDs {doi}: HTTP {r.status_code}"); return []
                     ids = [n.get("nameIdentifier") for c in (r.json()["data"]["attributes"].get("creators") or [])
                            for n in c.get("nameIdentifiers") or []] if r.status_code == 200 else []
-            except Exception:
+            except Exception as e:
+                failed(f"ORCIDs {doi}: {type(e).__name__}")
                 return []                                   # network error: don't cache, retry next run
             self.d[k] = sorted({orcid(i) for i in ids if orcid(i)})
             time.sleep(0.05)

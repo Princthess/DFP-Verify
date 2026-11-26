@@ -15,7 +15,7 @@ Public API:
 """
 import json, os, re, time
 from patterns import ACC_ROUTES   # (archive, anchored regex, check-kind) -- shared with detection
-from net import S                 # shared HTTP session (User-Agent with contact address)
+from net import S, failed         # shared HTTP session; "no answer" bookkeeping
 
 DATA_TYPES = {"dataset", "software", "collection"}
 
@@ -59,21 +59,25 @@ def _check_accession(acc):
     if check is None:                      # detected but no auto-check wired (EGA/GCA/MetaboLights)
         return "accession-recognized (archive not auto-checked)"
     try:
-        if check == "geo":
-            u = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=gds&term={acc}[ACCN]&retmode=json"
-            cnt = S.get(u, timeout=15).json().get("esearchresult", {}).get("count", "0"); time.sleep(0.34)
-            return "data-verified (GEO)" if cnt not in ("0", None) else "accession-not-found"
-        if check == "sra":
-            # exact accession field: a bare term is a free-text search ("SRA3" matched records)
-            u = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=sra&term={acc}[Accession]&retmode=json"
-            cnt = S.get(u, timeout=15).json().get("esearchresult", {}).get("count", "0"); time.sleep(0.34)
-            return "data-verified (SRA)" if cnt not in ("0", None) else "accession-not-found"
+        if check in ("geo", "sra"):
+            # GEO: accession field; SRA: exact accession field (a bare term is a free-text search: "SRA3"
+            # matched records). NCBI answers a rate limit with JSON that has no "esearchresult" -- that is
+            # no answer, not "count 0".
+            db, field = ("gds", "ACCN") if check == "geo" else ("sra", "Accession")
+            u = f"https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db={db}&term={acc}[{field}]&retmode=json"
+            r = S.get(u, timeout=15); time.sleep(0.34)
+            res = r.json().get("esearchresult") if r.status_code == 200 else None
+            if not res or "count" not in res:
+                return f"check-error (HTTP {r.status_code})"
+            return f"data-verified ({check.upper()})" if res["count"] != "0" else "accession-not-found"
         if check == "pride":
             s = S.get(f"https://www.ebi.ac.uk/pride/ws/archive/v2/projects/{acc}", timeout=15).status_code
         elif check == "ena":
             s = S.get(f"https://www.ebi.ac.uk/ena/browser/api/summary/{acc}", timeout=15).status_code
         else:  # "biostudies" (ArrayExpress / BioStudies)
             s = S.get(f"https://www.ebi.ac.uk/biostudies/api/v1/studies/{acc}", timeout=15).status_code
+        if s == 429 or s >= 500:                          # busy / server error: not "not found"
+            return f"check-error (HTTP {s})"
         return f"data-verified ({arch})" if s == 200 else "accession-not-found"
     except Exception:
         return "check-error"
@@ -125,6 +129,8 @@ def verify_candidates(cands, cache_path=".verify_cache.json", progress=True):
     # Only lasting answers are cached. "Not found" / dead / unchecked can change -- data released after
     # the paper (PRIDE, ENA embargoes), a site that was down or blocked -- so they are asked again next run.
     cache.update({k: v for k, v in fresh.items() if not _retry(v)})
+    for k, v in fresh.items():                          # no answer: counted in the run's summary
+        if v.startswith("check-error"): failed(f"verify {k}: {v}")
     json.dump(cache, open(cache_path, "w", encoding="utf-8"), ensure_ascii=False, indent=0)
     for c in cands:
         k = c["kind"] + "|" + c["identifier"].lower()

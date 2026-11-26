@@ -23,7 +23,10 @@ import json, os, time, re
 from patterns import OWN_VERBS, REUSE_CUE   # own-provenance verbs / outside-source cues, single source
 from registry_lookup import orcid
 from fields import dataset_subjects
-from net import S                # shared HTTP session (User-Agent with contact address)
+from net import S, transient, failed   # shared HTTP session; "no answer" bookkeeping
+
+class NoAnswer(Exception):
+    """A registry gave no usable answer (429 / 5xx / network): ask again next run, never cache."""
 
 def _surnames(meta):
     out = []
@@ -33,30 +36,32 @@ def _surnames(meta):
     return out
 
 def _csl(doi):
+    """CSL record from doi.org; None if the DOI has none (404 etc.). NoAnswer on 429 / 5xx / network."""
     try:
         r = S.get("https://doi.org/" + doi, headers={"Accept": "application/vnd.citationstyles.csl+json"},
                   timeout=15, allow_redirects=True)
-        if r.status_code == 200: return r.json()
-    except Exception:
-        pass
-    return None
+    except Exception as e:
+        raise NoAnswer(f"doi.org {doi}: {type(e).__name__}")
+    if transient(r.status_code): raise NoAnswer(f"doi.org {doi}: HTTP {r.status_code}")
+    return r.json() if r.status_code == 200 else None
 
 def _datacite(doi):
     """Full DataCite record (rights, ORCIDs) + the name of the repository that registered it
     (the DataCite client, e.g. 'Swedish National Data Service', 'SciLifeLab Data Repository').
     `publisher` is the responsible institution and often hides the repository, so both are kept.
-    None for non-DataCite DOIs (e.g. Crossref)."""
+    None for non-DataCite DOIs (e.g. Crossref). NoAnswer on 429 / 5xx / network: falling back to doi.org
+    then would cache a record without access or repository for good."""
     try:
         r = S.get(f"https://api.datacite.org/dois/{doi}", params={"include": "client"}, timeout=15)
-        if r.status_code == 200:
-            j = r.json()
-            a = dict(j["data"]["attributes"])
-            cl = [x for x in j.get("included") or [] if x.get("type") in ("clients", "repositories")]
-            a["_repository"] = (cl[0].get("attributes") or {}).get("name", "") if cl else ""
-            return a
-    except Exception:
-        pass
-    return None
+    except Exception as e:
+        raise NoAnswer(f"DataCite {doi}: {type(e).__name__}")
+    if transient(r.status_code): raise NoAnswer(f"DataCite {doi}: HTTP {r.status_code}")
+    if r.status_code != 200: return None
+    j = r.json()
+    a = dict(j["data"]["attributes"])
+    cl = [x for x in j.get("included") or [] if x.get("type") in ("clients", "repositories")]
+    a["_repository"] = (cl[0].get("attributes") or {}).get("name", "") if cl else ""
+    return a
 
 def _rights(rights_list):
     """DataCite rightsList -> (licence, access). access = open / restricted / '' from the
@@ -85,7 +90,12 @@ class MetaCache:
         if not doi: return empty
         k = "rec6|" + doi.lower()                            # rec6: + resource type (Dataset / Software ...)
         if k not in self.d:
-            a = _datacite(doi)
+            try:
+                a = _datacite(doi)
+                m = None if a else (_csl(doi) or {})
+            except NoAnswer as e:
+                failed(str(e))
+                return empty                                  # this run only; not cached, asked again next run
             if a:
                 cr = a.get("creators") or []
                 lic, access = _rights(a.get("rightsList"))
@@ -99,7 +109,6 @@ class MetaCache:
                     "subjects":  dataset_subjects(a),                # SSIF / FOS, for the field cross-check
                     "type":      (a.get("types") or {}).get("resourceTypeGeneral") or ""}
             else:
-                m = _csl(doi) or {}
                 lic, L = "", m.get("license")
                 if isinstance(L, list) and L:
                     lic = L[0].get("URL", "") if isinstance(L[0], dict) else str(L[0])
@@ -140,10 +149,13 @@ class MetaCache:
                 r = S.get("https://www.ebi.ac.uk/ena/portal/api/filereport",
                           params={"accession": acc, "result": "read_run", "format": "json",
                                   "fields": "study_accession,secondary_study_accession"}, timeout=20)
+                if transient(r.status_code):                   # busy / server error: not "no study"
+                    failed(f"ENA {acc}: HTTP {r.status_code}"); return set()
                 rows = r.json() if r.status_code == 200 else []
                 self.d[k] = sorted({v for row in rows for v in (row.get("study_accession"),
                                                                row.get("secondary_study_accession")) if v})
-            except Exception:
+            except Exception as e:
+                failed(f"ENA {acc}: {type(e).__name__}")
                 return set()                                   # network error: don't cache
             time.sleep(0.1)
         return set(self.d[k])

@@ -130,6 +130,8 @@ def _summary_row(paper, paper_meta, confirmed, own_open, own_restr, unknown, reu
     pm = (paper_meta or {}).get(paper, {})
     own = own_open or own_restr or own_acc_unk          # provenance-unknown data are NOT own (see _summary_label)
     notes = []
+    if pm.get("llm_ran") == "no":
+        notes.append("not read by the LLM (no rows in its output): pattern search only")
     # surface a dead declared link even when the headline verdict is something else
     if likely and (own or reused):
         notes.append(f"{len(likely)} declared link(s) not verified as a dataset (dead, unchecked, or not a record)")

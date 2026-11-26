@@ -186,5 +186,55 @@ class VerdictRules(unittest.TestCase):
         self.assertEqual(self.label(), "no data found")
 
 
+class _Resp:
+    """A stand-in HTTP answer, so registry failures can be tested without internet."""
+    def __init__(self, status, body=None): self.status_code, self._b = status, body or {}
+    def json(self): return self._b
+
+
+class NoAnswerIsNotNothing(unittest.TestCase):
+    """A busy or failing registry (429 / 5xx) must never be read or cached as "nothing there"."""
+    def setUp(self):
+        import net, tempfile
+        self.net, self.tmp = net, tempfile.mkdtemp()
+        net.FAILED.clear()
+
+    def patch(self, module, status, body=None):
+        old = module.S.get
+        module.S.get = lambda *a, **k: _Resp(status, body)
+        self.addCleanup(setattr, module.S, "get", old)
+
+    def test_busy_datacite_is_not_cached_as_empty_record(self):
+        self.patch(classify, 503)
+        mc = classify.MetaCache(os.path.join(self.tmp, "m.json"))
+        self.assertEqual(mc.record("10.5281/zenodo.1")["access"], "")
+        self.assertEqual(mc.d, {})                                   # nothing cached
+        self.assertEqual(len(self.net.FAILED), 1)                    # and counted
+
+    def test_busy_crossref_is_not_cached_as_no_orcids(self):
+        self.patch(registry_lookup, 429)
+        rc = registry_lookup.RegistryCache(os.path.join(self.tmp, "r.json"))
+        self.assertEqual(rc.paper_orcids("10.1000/x"), [])
+        self.assertEqual(rc.d, {})
+        self.assertEqual(len(self.net.FAILED), 1)
+
+    def test_ncbi_rate_limit_is_not_accession_not_found(self):
+        import verify
+        self.patch(verify, 200, {"error": "API rate limit exceeded"})   # what NCBI sends when too busy
+        self.assertTrue(verify._check_accession("SRR1234567").startswith(("check-error", "accession-recognized")))
+
+    def test_busy_ebi_is_not_accession_not_found(self):
+        import verify
+        self.patch(verify, 503)
+        self.assertTrue(verify._check_accession("PXD061695").startswith("check-error"))
+
+
+class MissingLlmOutput(unittest.TestCase):
+    def test_run_stops_when_llm_csv_is_missing(self):
+        import run_pipeline
+        with self.assertRaises(SystemExit):
+            run_pipeline.read_llm_output(os.path.join("no", "such", "file.csv"))
+
+
 if __name__ == "__main__":
     unittest.main()

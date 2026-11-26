@@ -237,12 +237,24 @@ OWN["paper"] = OWN.paper.map(lambda k: NAME.get(k, k))
 
 # Overview {scrolling="true"}
 
-## Row {height=84px}
+## Row {height=110px}
 
 ```{python}
 # Context, not results: how much was analysed. All percentages below are of the NB papers that may have
 # data of their own (papers saying they generated no data are left out).
 n_reuse = int(((S.reuse_signal != "") | (S.reuse_llm != "")).sum()) if "reuse_signal" in S else 0
+
+def _run_warnings():
+    """What this run could not see (run_info.json): papers the LLM never read, lookups with no answer."""
+    w = []
+    nl = RUN.get("papers_without_llm") or []
+    if nl:
+        w.append(f'<b>{len(nl)}</b> paper{"s" if len(nl) > 1 else ""} not read by the LLM (pattern search only; '
+                 f'listed in the note column)')
+    if RUN.get("lookups_failed"):
+        w.append(f'<b>{RUN["lookups_failed"]}</b> registry lookups got no answer: re-run for complete results')
+    return ('<br><span class="text-danger">⚠ ' + " · ".join(w) + "</span>") if w else ""
+
 RUN_LINE = " · ".join(x for x in [
     f"Snapshot of a run on <b>{RUN['run_date']}</b>" if RUN.get("run_date") else "",
     f"corpus <b>{RUN['corpus']}</b>" if RUN.get("corpus") else "",
@@ -251,7 +263,8 @@ RUN_LINE = " · ".join(x for x in [
 display(HTML(f'<div class="dv-context">{RUN_LINE}<br><b>{N}</b> papers analysed'
              + (f' · <b>{NB}</b> may have data of their own ({n_nogen} say{"s" if n_nogen == 1 else ""} no data '
                 f'were generated)' if n_nogen else "")
-             + f' · <b>{len(OWN)}</b> own datasets found. Percentages below are of the {NB} papers.</div>'))
+             + f' · <b>{len(OWN)}</b> own datasets found. Percentages below are of the {NB} papers.'
+             + _run_warnings() + '</div>'))
 # value-box hovers (value boxes can't hold extra output; placed by title)
 display(how("<b>Counted as sharing.</b> The paper says where its own data are, and the link works. Open or "
             "restricted access.", card="Share their own data"))

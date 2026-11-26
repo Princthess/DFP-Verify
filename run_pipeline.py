@@ -3,10 +3,10 @@ ORCHESTRATOR - detect-union -> verify -> registry links (DataCite reverse) -> cl
 
 Edit the CONFIG block for your corpus. Inputs:
   TEXT_DIR    folder of paper .txt files   (drives the regex detector)
-  DFP_CSV     the LLM detector's output     (optional; adds LLM candidates)
+  DFP_CSV     the LLM detector's output     (required; the run stops if it is missing)
 Outputs: OUT_DIR/summary.csv (headline), per_dataset.csv, merged_output.csv ; registry lookups cached.
 """
-import os, re, csv, glob
+import os, re, csv, glob, sys
 from collections import Counter
 import config; config.load_env()   # read a local .env into os.environ before the core modules read it
 from patterns import GH_RX
@@ -24,7 +24,7 @@ def stem(s): return os.path.splitext(os.path.basename(str(s).replace("\\", "/"))
 # "data", "data files", "datasets" -- not "metadata"
 SAYS_DATA = re.compile(r"(?i)(?<!meta)\bdata(?:\s*sets?|\s+files?)?\b|\bdatasets?\b")
 
-def _write_run_info(out_dir, text_dir, dfp_csv, n_papers):
+def _write_run_info(out_dir, text_dir, dfp_csv, n_papers, extra=None):
     """run_info.json next to the outputs: what this run was -- the report prints it, and yearly runs can be
     compared knowing which tool version counted them. Corpus name: DV_CORPUS, else the text folder's
     parent folder name (".../260526/_text" -> "260526")."""
@@ -40,7 +40,8 @@ def _write_run_info(out_dir, text_dir, dfp_csv, n_papers):
     corpus = os.environ.get("DV_CORPUS") or os.path.basename(os.path.dirname(td) if os.path.basename(td).startswith("_") else td)
     info = {"run_date": datetime.date.today().isoformat(), "corpus": corpus, "papers": n_papers,
             "tool_version": version, "llm_csv": os.path.basename(dfp_csv or ""),
-            "org_name": os.environ.get("DV_ORG_NAME", "")}   # whose Zenodo communities count as "ours"
+            "org_name": os.environ.get("DV_ORG_NAME", ""),   # whose Zenodo communities count as "ours"
+            **(extra or {})}
     json.dump(info, open(os.path.join(out_dir, "run_info.json"), "w", encoding="utf-8"), indent=1)
 
 def _homepage(url):
@@ -92,20 +93,22 @@ def read_llm_output(dfp_csv):
     """DFP's rows grouped by paper; the paper DOI DFP gave; and DFP's paper-level fields (incl. das_found)
     so merged_output.csv can have a placeholder row for every paper DFP saw, even one with nothing found."""
     dfp_by, paper_doi, paper_meta = {}, {}, {}
-    if dfp_csv and os.path.exists(dfp_csv):
-        for r in csv.DictReader(open(dfp_csv, encoding="utf-8-sig", newline="")):
-            # The new (LiteLLM) DFP renamed columns: pdf->file, ocr_pages->ocr_page_count, +vlm.
-            # Normalise so BOTH the old and new DFP CSVs feed the rest of the pipeline unchanged.
-            r.setdefault("file", r.get("pdf") or r.get("source_json") or "")
-            r.setdefault("ocr_page_count", r.get("ocr_pages") or "")
-            r.setdefault("vlm", "")
-            p = stem(r.get("file") or r.get("pdf") or r.get("source_json"))
-            dfp_by.setdefault(p, []).append(r)
-            pd = (r.get("paper_doi") or "").strip()
-            if pd and p not in paper_doi: paper_doi[p] = pd
-            if p not in paper_meta:
-                paper_meta[p] = {k: (r.get(k) or "") for k in
-                                 ("file", "paper_doi", "das_found", "ocr_page_count")}
+    # A wrong path used to give a normal-looking report with the whole LLM half missing.
+    if not (dfp_csv and os.path.exists(dfp_csv)):
+        sys.exit(f"LLM output not found: {dfp_csv!r}. Set DV_DFP_CSV to the LLM tool's CSV.")
+    for r in csv.DictReader(open(dfp_csv, encoding="utf-8-sig", newline="")):
+        # The new (LiteLLM) DFP renamed columns: pdf->file, ocr_pages->ocr_page_count, +vlm.
+        # Normalise so BOTH the old and new DFP CSVs feed the rest of the pipeline unchanged.
+        r.setdefault("file", r.get("pdf") or r.get("source_json") or "")
+        r.setdefault("ocr_page_count", r.get("ocr_pages") or "")
+        r.setdefault("vlm", "")
+        p = stem(r.get("file") or r.get("pdf") or r.get("source_json"))
+        dfp_by.setdefault(p, []).append(r)
+        pd = (r.get("paper_doi") or "").strip()
+        if pd and p not in paper_doi: paper_doi[p] = pd
+        if p not in paper_meta:
+            paper_meta[p] = {k: (r.get(k) or "") for k in
+                             ("file", "paper_doi", "das_found", "ocr_page_count")}
     return dfp_by, paper_doi, paper_meta
 
 
@@ -141,7 +144,10 @@ def find_candidates(text_dir, dfp_by, paper_meta):
     for txt in glob.glob(os.path.join(text_dir, "*.txt")):
         p = stem(txt)
         text = open(txt, encoding="utf-8", errors="ignore").read()
-        read_statements(text, dfp_by.get(p, []), paper_meta.setdefault(p, {}))
+        # The LLM writes at least one row per paper it read. No row = it never read this paper (failed or
+        # skipped), which is not the same as "found nothing": flagged per paper and in run_info.json.
+        paper_meta.setdefault(p, {})["llm_ran"] = "yes" if p in dfp_by else "no"
+        read_statements(text, dfp_by.get(p, []), paper_meta[p])
         cands = detect_union.union_detect(text=text, dfp_rows=dfp_by.get(p, []))
         # in-text provenance: locate each id against the DAS / reference / supplement landmarks.
         # DAS region is found by the heading locator; DFP's own source_section also counts.
@@ -373,7 +379,20 @@ def write_results(per_paper, paper_meta, text_dir, dfp_csv, out_dir):
     selfcheck.csv, run_info.json), then a short summary on screen."""
     summary_rows, paper_rows, dataset_rows, merged_rows = fuse.fuse(per_paper, paper_meta=paper_meta)
     fuse.write_outputs(summary_rows, dataset_rows, merged_rows, out_dir)
-    _write_run_info(out_dir, text_dir, dfp_csv, len(per_paper))
+    # What this run could not see, said out loud (screen, run_info.json -> report) rather than counted as
+    # "nothing found": papers the LLM never read, and registry lookups that got no answer.
+    import net
+    no_llm = sorted((paper_meta.get(p, {}).get("file") or p) for p in per_paper
+                    if paper_meta.get(p, {}).get("llm_ran") == "no")
+    _write_run_info(out_dir, text_dir, dfp_csv, len(per_paper),
+                    {"papers_without_llm": no_llm, "lookups_failed": len(net.FAILED)})
+    if no_llm:
+        print(f"\nWARNING: {len(no_llm)} paper(s) have no rows in the LLM output (pattern search only): "
+              + ", ".join(no_llm))
+    if net.FAILED:
+        print(f"\nWARNING: {len(net.FAILED)} registry lookup(s) got no answer (rate limit / server error / "
+              f"network). Not cached; results for those are incomplete -- run again. First ones:")
+        for f in net.FAILED[:5]: print("   ", f)
 
     own_open_papers = [r for r in paper_rows if r["has_own_open"]]
     print(f"\nRESULT ({len(per_paper)} papers):")
