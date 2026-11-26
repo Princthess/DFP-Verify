@@ -4,6 +4,9 @@ format:
   dashboard:
     theme: cosmo
     nav-buttons: []
+    # One file to share: CSS, scripts and fonts go inside the HTML (no dashboard_files/ folder needed).
+    embed-resources: true
+    html-math-method: plain   # no formulas in the report; keeps MathJax out of the single file
     include-after-body:
       text: |
         <script>
@@ -104,7 +107,21 @@ import pandas as pd
 import plotly.graph_objects as go
 from IPython.display import Markdown, HTML
 
-OUT = os.environ.get("DV_OUT_DIR") or os.path.join("..", "output")
+# Plotly puts a MathJax <script> (formula rendering, ~2 MB) into every chart's HTML, with no option
+# to turn it off. With embed-resources that is one copy per chart (~28 MB). No chart uses formulas:
+# plotly.js is embedded once at page start (connected=False), each chart only draws; MathJax tag removed.
+import plotly.io as pio
+from plotly.io._base_renderers import NotebookRenderer
+class _NoMathJax(NotebookRenderer):
+    def to_mimebundle(self, fig_dict):
+        b = super().to_mimebundle(fig_dict)
+        b["text/html"] = re.sub(r'<script[^>]*src="[^"]*mathjax[^"]*"[^>]*>\s*</script>', "",
+                                b["text/html"], flags=re.I)
+        return b
+pio.renderers["dv_nomathjax"] = _NoMathJax(connected=False, include_plotlyjs=False)
+pio.renderers.default = "dv_nomathjax"
+
+OUT =os.environ.get("DV_OUT_DIR") or os.path.join("..", "output")
 # category axes with many bars: Plotly hides every other label when space is short -- show them all
 EVERY_LABEL = dict(dtick=1, tickfont=dict(size=11), automargin=True)
 S = pd.read_csv(os.path.join(OUT, "summary.csv"), encoding="utf-8-sig", dtype=str).fillna("")
@@ -332,10 +349,12 @@ _ = style(fig).update_layout(barmode="stack", showlegend=False,
                              yaxis=dict(categoryorder="array", categoryarray=rows_y))
 if n_nogen:   # say on the chart itself that the base is smaller than all papers
     _ = fig.add_annotation(xref="paper", yref="paper", x=0, y=-0.08, xanchor="left", yanchor="top",
-                           showarrow=False, font=dict(size=12, color=INK2),
-                           text=f"Percent of {NB} papers. Not included: {n_nogen} paper{'s' if n_nogen > 1 else ''} "
+                           showarrow=False, font=dict(size=12, color=INK2), align="left",
+                           # Plotly does not wrap annotation text and it starts at the plot area (after the
+                           # long bar labels), so it is split into short lines to fit narrow cards.
+                           text=f"Percent of {NB} papers. Not included: {n_nogen} paper{'s' if n_nogen > 1 else ''}<br>"
                                 f"saying {'they have' if n_nogen > 1 else 'it has'} no data of {'their' if n_nogen > 1 else 'its'} own.")
-    _ = fig.update_layout(margin=dict(b=40))
+    _ = fig.update_layout(margin=dict(b=56))
 display(fig)
 how("One result per paper, from what the paper itself says:<ul>"
     "<li><b>Shares own data</b>: own data deposited, link works (dark = open, light = restricted).</li>"
@@ -723,7 +742,8 @@ data_tab(ZO[["paper", "identifier", "group", "zenodo_community"]].sort_values(["
 
 ```{python}
 #| include: false
-# roagg_compare.py (optional) -> roagg_compare.csv + roagg_info.json. Own datasets only. Papers that
+# roagg_compare.py (optional) -> roagg_compare.csv + roagg_info.json. The section below is shown only
+# when rendered with -M roagg:true (still being worked on). Own datasets only. Papers that
 # have no author of the organisation are left out: their datasets are not RoAgg's to find.
 RC_PATH = os.path.join(OUT, "roagg_compare.csv")
 HAVE_RC = os.path.exists(RC_PATH)
@@ -765,6 +785,8 @@ if HAVE_RC:
     RB["what_to_do"] = RB.why.map(lambda w: "Not counted on purpose: the paper doesn't cite it (rule: the paper must point to its data)"
                                   if w.startswith("not in the paper") else "Check the paper: how does it cite this dataset?")
 ```
+
+::: {.content-visible when-meta="roagg"}
 
 ## Row {height=96px}
 
@@ -846,6 +868,8 @@ if HAVE_RC:
     W = W.rename(columns={"for_whom": "for", "what_to_do": "what to do"}).sort_values(["for", "repository", "paper"])
     display(data_tab(W, "roagg_improve"))
 ```
+
+:::
 
 # Tool check {scrolling="true"}
 

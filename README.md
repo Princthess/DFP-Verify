@@ -37,7 +37,7 @@ looks up what is new. All files and columns: [docs/output.md](docs/output.md). T
 |---|---|
 | Research field per paper (Swepub, OpenAlex). On by default; `DV_FIELDS=off` skips it | — |
 | HTML report: `dashboard/dashboard.qmd` | Quarto, `requirements-dashboard.txt` |
-| Comparison with RoAgg: `roagg_compare.py` | RoAgg |
+| Comparison with RoAgg: `roagg_compare.py`. Work in progress: left out of the report unless rendered with `-M roagg:true` | RoAgg |
 | Openness compared with the rest of each repository: `field_norm.py` | — |
 
 How to run these: [docs/optional-extras.md](docs/optional-extras.md).

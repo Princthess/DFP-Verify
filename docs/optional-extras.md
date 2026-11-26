@@ -21,8 +21,9 @@ Pages:
 - **Infrastructure**: under which policies, in which repositories, and does the metadata reach the
   data? Data availability statement by verdict and per publisher, the verdict per publisher
   (publishers with fewer than 4 papers pooled), repositories with open / restricted datasets, whether
-  each dataset's record links back to the paper, Zenodo communities, and (if `roagg_compare.py` has
-  run) which own datasets RoAgg finds, why the others are missing, and what could improve for whom.
+  each dataset's record links back to the paper, Zenodo communities, and (only when rendered with
+  `-M roagg:true`, after `roagg_compare.py`) which own datasets RoAgg finds, why the others are
+  missing, and what could improve for whom.
 - **Tool check**: how far to trust the numbers. Which source found each dataset, the self-check score,
   and a to-do list of what to check by hand. Each row has a **possible cause** — the paper, the
   dataset's record, the paper list (given DOI), this tool, or **Unclear** (named only with evidence: the
@@ -35,12 +36,15 @@ downloads of the counts (as plotted) and of the rows.
 ```
 pip install -r requirements-dashboard.txt          # plotly, pandas, jupyter (+ install Quarto)
 QUARTO_PYTHON=.venv/bin/python quarto render dashboard/dashboard.qmd   # reads output/, or DV_OUT_DIR
-# a second corpus into its own file:
-DV_OUT_DIR=$PWD/output_mycorpus quarto render dashboard/dashboard.qmd --output dashboard_mycorpus.html
+# a second corpus into its own file: run from inside dashboard/, with absolute DV_* paths
+cd dashboard && DV_OUT_DIR=$PWD/../output_mycorpus quarto render dashboard.qmd --output dashboard_mycorpus.html
+# with the RoAgg comparison (work in progress, left out by default; run roagg_compare.py first):
+quarto render dashboard/dashboard.qmd -M roagg:true
 ```
-The result is `dashboard/dashboard.html` (not committed). Quarto writes an `--output` file to the repo
-root; move it into `dashboard/`, next to `dashboard_files/`, which it shares.
-## Comparison with RoAgg (optional)
+The result is `dashboard/dashboard.html` (not committed): one self-contained file (~10 MB) that can be
+shared on its own and opens offline; no `dashboard_files/` folder is needed. (Rendering `--output` from
+the repo root fails while embedding; render from inside `dashboard/` as above.)
+## Comparison with RoAgg (optional, work in progress)
 
 [RoAgg](https://github.com/snd-sweden/roagg) (SND) lists an organisation's research outputs from DataCite
 (+ OpenAIRE, Crossref) by ROR and name variants — metadata first, organisation level. DFP-Verify reads
@@ -58,6 +62,9 @@ organisation's (no affiliated author in OpenAlex). The other way round: RoAgg da
 one of the papers but that the tool has no own dataset for, and why. Versions are counted once
 (`conceptDoi`, figshare `.vN`). (`--source openalex` currently needs an OpenAlex API key for paging,
 which RoAgg 2026.0.4 can't pass, so the run stops — leave it out.)
+
+The report leaves the RoAgg section out unless asked for (the comparison is still being worked on):
+`quarto render dashboard/dashboard.qmd -M roagg:true`.
 
 ## Repository reference for dataset openness (optional)
 
